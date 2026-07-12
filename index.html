@@ -1,0 +1,2477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Below the Root — Reawakened</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: rgba(10, 18, 26, 0.82);
+    --ink: #e8f2e6;
+    --dim: #8fa48b;
+    --accent: #c4e17f;
+    --spirit: #9ee7ff;
+    --warn: #ffb26b;
+    --danger: #ff7a7a;
+  }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #05070a;
+    color: var(--ink);
+    font-family: 'Georgia', 'Palatino Linotype', serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  #app {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+  }
+  #frame {
+    position: relative;
+    width: min(96vw, calc(96vh * 1.6));
+    aspect-ratio: 16 / 10;
+    background: #000;
+    border: 1px solid #1a2a1e;
+    box-shadow: 0 0 60px rgba(80, 180, 120, 0.08), inset 0 0 120px rgba(0,0,0,0.7);
+    image-rendering: pixelated;
+  }
+  canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    image-rendering: pixelated;
+  }
+  #ui {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    font-size: clamp(11px, 1.4vw, 16px);
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid rgba(160, 210, 150, 0.18);
+    backdrop-filter: blur(4px);
+    border-radius: 6px;
+    padding: 10px 14px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  }
+  #hud {
+    position: absolute;
+    top: 12px; left: 12px; right: 12px;
+    display: flex; justify-content: space-between;
+    gap: 12px;
+    opacity: 0; transition: opacity 300ms ease;
+  }
+  #hud.on { opacity: 1; }
+  #hud .left, #hud .right { display: flex; gap: 10px; align-items: center; }
+  .bar {
+    width: 140px; height: 10px;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(200,220,180,0.2);
+    border-radius: 5px; overflow: hidden;
+    position: relative;
+  }
+  .bar > div {
+    height: 100%; width: 100%;
+    transition: width 200ms ease;
+  }
+  .bar.spirit > div { background: linear-gradient(90deg, #6bd7ff, #9ee7ff); }
+  .bar.vitality > div { background: linear-gradient(90deg, #7ad46a, #c4e17f); }
+  .bar-label {
+    font-size: 0.75em; color: var(--dim);
+    text-shadow: 0 1px 0 #000;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  #abilities {
+    display: flex; gap: 6px;
+  }
+  .ability {
+    width: 44px; height: 44px;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(200,220,180,0.2);
+    border-radius: 8px;
+    display: grid; place-items: center;
+    position: relative;
+    font-size: 0.9em;
+  }
+  .ability .glyph { font-size: 1.4em; }
+  .ability .key {
+    position: absolute; top: 2px; right: 4px;
+    font-size: 0.7em; color: var(--dim);
+  }
+  .ability.locked { opacity: 0.25; }
+  .ability.cool::after {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    border-radius: 8px;
+  }
+  #dialogue {
+    position: absolute;
+    left: 5%; right: 5%; bottom: 6%;
+    max-width: 720px;
+    margin: 0 auto;
+    opacity: 0; transform: translateY(20px);
+    transition: opacity 220ms ease, transform 220ms ease;
+    pointer-events: auto;
+  }
+  #dialogue.on { opacity: 1; transform: translateY(0); }
+  #dialogue .speaker {
+    color: var(--accent);
+    font-weight: bold;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+    text-shadow: 0 0 12px rgba(196, 225, 127, 0.4);
+  }
+  #dialogue .body { line-height: 1.45; min-height: 3em; }
+  #dialogue .choices {
+    margin-top: 12px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  #dialogue .choice {
+    cursor: pointer; padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    transition: background 120ms, border-color 120ms;
+  }
+  #dialogue .choice:hover, #dialogue .choice.focus {
+    background: rgba(196, 225, 127, 0.1);
+    border-color: rgba(196, 225, 127, 0.5);
+  }
+  #dialogue .hint {
+    color: var(--dim); font-size: 0.85em;
+    margin-top: 6px; letter-spacing: 0.05em;
+  }
+  #banner {
+    position: absolute;
+    left: 0; right: 0; top: 40%;
+    text-align: center;
+    font-size: clamp(1.4em, 3.6vw, 2.6em);
+    letter-spacing: 0.1em;
+    opacity: 0;
+    pointer-events: none;
+    text-shadow: 0 0 30px rgba(160, 220, 180, 0.6);
+    transition: opacity 400ms ease;
+  }
+  #banner.on { opacity: 1; }
+  #banner .sub {
+    display: block;
+    font-size: 0.5em; color: var(--dim);
+    letter-spacing: 0.24em;
+    margin-top: 8px;
+  }
+  #menu {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    background: radial-gradient(ellipse at center, rgba(20,40,30,0.25), rgba(0,0,0,0.6));
+    pointer-events: auto;
+    transition: opacity 500ms ease;
+  }
+  #menu.hidden { opacity: 0; pointer-events: none; }
+  #menu .card {
+    text-align: center;
+    padding: 28px 44px;
+    max-width: 76%;
+  }
+  #menu h1 {
+    font-family: 'Palatino Linotype', 'Georgia', serif;
+    font-weight: normal;
+    font-size: clamp(2em, 5vw, 3.6em);
+    letter-spacing: 0.12em;
+    margin: 0 0 4px;
+    text-shadow: 0 0 24px rgba(196, 225, 127, 0.4);
+  }
+  #menu h1 .below { color: var(--accent); font-style: italic; }
+  #menu .sub {
+    color: var(--dim); letter-spacing: 0.28em;
+    text-transform: uppercase; font-size: 0.85em;
+    margin-bottom: 22px;
+  }
+  #menu button {
+    display: block; margin: 8px auto;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid rgba(200,220,180,0.35);
+    padding: 10px 30px;
+    font-family: inherit;
+    font-size: 1em;
+    letter-spacing: 0.14em;
+    cursor: pointer;
+    min-width: 220px;
+    transition: background 120ms, border-color 120ms, color 120ms;
+  }
+  #menu button:hover, #menu button.focus {
+    background: rgba(196, 225, 127, 0.08);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  #menu .foot {
+    margin-top: 22px;
+    color: var(--dim);
+    font-size: 0.8em;
+    letter-spacing: 0.1em;
+  }
+  #chars {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .char {
+    padding: 12px 10px;
+    border: 1px solid rgba(200,220,180,0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    background: rgba(0,0,0,0.35);
+    transition: border-color 120ms, background 120ms;
+    text-align: left;
+  }
+  .char:hover, .char.focus {
+    border-color: var(--accent);
+    background: rgba(196, 225, 127, 0.06);
+  }
+  .char .name { color: var(--accent); font-weight: bold; letter-spacing: 0.08em; }
+  .char .role { color: var(--dim); font-size: 0.8em; letter-spacing: 0.05em; margin: 3px 0 8px; }
+  .char .stats { font-size: 0.8em; line-height: 1.6; }
+  .char .stat { display: flex; justify-content: space-between; }
+  .char .val { color: var(--spirit); }
+  #quest {
+    position: absolute;
+    top: 56px; right: 12px;
+    max-width: 260px;
+    opacity: 0; transition: opacity 300ms ease;
+  }
+  #quest.on { opacity: 1; }
+  #quest .title { color: var(--accent); font-size: 0.85em; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }
+  #quest .goal { font-size: 0.9em; color: var(--ink); }
+  #quest .hint { font-size: 0.8em; color: var(--dim); margin-top: 4px; font-style: italic; }
+  #toast {
+    position: absolute;
+    left: 50%; top: 30%;
+    transform: translate(-50%, -20px);
+    background: rgba(10, 20, 15, 0.9);
+    padding: 8px 20px;
+    border: 1px solid rgba(196, 225, 127, 0.4);
+    border-radius: 20px;
+    color: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms, transform 200ms;
+    letter-spacing: 0.06em;
+    font-size: 0.95em;
+  }
+  #toast.on { opacity: 1; transform: translate(-50%, 0); }
+  #controls-hint {
+    position: absolute;
+    bottom: 8px; left: 12px;
+    color: var(--dim);
+    font-size: 0.75em;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .fade {
+    position: absolute; inset: 0;
+    background: #000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 700ms ease;
+  }
+  .fade.on { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="frame">
+    <canvas id="game" width="1280" height="800"></canvas>
+    <div id="ui">
+      <div id="hud">
+        <div class="left">
+          <div>
+            <div class="bar-label">Spirit</div>
+            <div class="bar spirit"><div id="bar-spirit"></div></div>
+          </div>
+          <div>
+            <div class="bar-label">Vitality</div>
+            <div class="bar vitality"><div id="bar-vitality"></div></div>
+          </div>
+        </div>
+        <div class="right">
+          <div id="abilities"></div>
+        </div>
+      </div>
+      <div id="quest" class="panel">
+        <div class="title">Path</div>
+        <div class="goal"></div>
+        <div class="hint"></div>
+      </div>
+      <div id="toast"></div>
+      <div id="dialogue" class="panel">
+        <div class="speaker"></div>
+        <div class="body"></div>
+        <div class="choices"></div>
+        <div class="hint">Space/Enter to continue &middot; ↑↓ to select</div>
+      </div>
+      <div id="banner"><span class="text"></span><span class="sub"></span></div>
+      <div id="menu"></div>
+      <div id="controls-hint">← → move · Space jump · Q mindtouch · E lift · R grow · F glide · Tab map · Esc menu</div>
+      <div id="fade" class="fade"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ========================================================================
+   BELOW THE ROOT — REAWAKENED
+   A spiritual successor tribute — original characters, world, and story
+   inspired by the 1984 adventure game's mechanics and themes.
+   ======================================================================== */
+
+// --------------------------- Utility --------------------------------------
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+const randi = (a, b) => Math.floor(rand(a, b));
+const dist2 = (ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay; return dx*dx + dy*dy; };
+const sign = (v) => v > 0 ? 1 : v < 0 ? -1 : 0;
+
+// --------------------------- Canvas ---------------------------------------
+const canvas = $('#game');
+const ctx = canvas.getContext('2d', { alpha: false });
+ctx.imageSmoothingEnabled = false;
+const W = canvas.width;
+const H = canvas.height;
+
+// --------------------------- Input ----------------------------------------
+const keys = new Set();
+const pressed = new Set();
+const released = new Set();
+window.addEventListener('keydown', (e) => {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code)) e.preventDefault();
+  if (!keys.has(e.code)) pressed.add(e.code);
+  keys.add(e.code);
+});
+window.addEventListener('keyup', (e) => {
+  keys.delete(e.code);
+  released.add(e.code);
+});
+const key = (c) => keys.has(c);
+const wasPressed = (c) => pressed.has(c);
+
+// --------------------------- Audio ----------------------------------------
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { audioCtx = null; }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function tone(freq, dur = 0.12, type = 'sine', gain = 0.08, sweep = 0) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (sweep) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq + sweep), t + dur);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(g); g.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + dur + 0.02);
+}
+const sfx = {
+  jump:   () => tone(520, 0.09, 'square', 0.06, 220),
+  land:   () => tone(180, 0.06, 'sine', 0.05, -60),
+  power:  () => { tone(660, 0.12, 'triangle', 0.06, 240); tone(880, 0.15, 'sine', 0.04, 320); },
+  lift:   () => { tone(330, 0.08, 'sine', 0.05, 120); tone(495, 0.10, 'triangle', 0.04, 180); },
+  grow:   () => { tone(220, 0.16, 'sawtooth', 0.04, 380); tone(440, 0.20, 'sine', 0.04, 160); },
+  glide:  () => tone(400, 0.06, 'sine', 0.03, 40),
+  pickup: () => { tone(880, 0.08, 'triangle', 0.06); setTimeout(() => tone(1320, 0.09, 'sine', 0.05), 60); },
+  hit:    () => tone(140, 0.14, 'square', 0.08, -80),
+  dialog: () => tone(500, 0.03, 'triangle', 0.03),
+  reveal: () => { tone(392, 0.32, 'sine', 0.05, 200); tone(523, 0.4, 'triangle', 0.04, 260); tone(659, 0.5, 'sine', 0.04, 320); },
+  select: () => tone(600, 0.05, 'triangle', 0.05),
+};
+
+// --------------------------- Characters -----------------------------------
+const CHARS = {
+  Vessa: {
+    name: 'Vessa',
+    role: 'Dreamweaver',
+    color: '#c4e17f',
+    accent: '#7ad46a',
+    // 4 spirit gifts, higher = stronger; balanced by weakness
+    mindtouch: 3, lift: 2, grow: 2, glide: 2,
+    intro: 'Vessa hears the thoughts of others plainly, as if spoken aloud.',
+  },
+  Kaelin: {
+    name: 'Kaelin',
+    role: 'Windrider',
+    color: '#9ee7ff',
+    accent: '#6bd7ff',
+    mindtouch: 2, lift: 1, grow: 2, glide: 3,
+    intro: 'Kaelin drifts on the least breath of air — the branches barely bend beneath his tread.',
+  },
+  Neriah: {
+    name: 'Neriah',
+    role: 'Greenspeaker',
+    color: '#7ad46a',
+    accent: '#c4e17f',
+    mindtouch: 2, lift: 2, grow: 3, glide: 1,
+    intro: 'Neriah coaxes vine and root from the smallest seed — the forest listens to her.',
+  },
+  Torren: {
+    name: 'Torren',
+    role: 'Handless-Lifter',
+    color: '#ffb26b',
+    accent: '#e88a3d',
+    mindtouch: 1, lift: 3, grow: 2, glide: 2,
+    intro: 'Torren shifts stone and cradle with an idle glance. Weight bends to his will.',
+  },
+};
+
+// --------------------------- Game State -----------------------------------
+const state = {
+  scene: 'menu',           // menu | charselect | playing | dialog | ending
+  char: null,              // selected character key
+  // Player state
+  p: {
+    x: 400, y: 200, vx: 0, vy: 0,
+    w: 22, h: 34,
+    facing: 1,
+    onGround: false,
+    gliding: false,
+    animT: 0,
+    spirit: 100, spiritMax: 100,
+    vit: 100, vitMax: 100,
+    inv: {},
+    flags: {},
+    lifting: null,          // reference to a Prop being lifted
+  },
+  world: null,             // world data with scenes
+  cur: 'grove',            // current scene key
+  cam: { x: 0, y: 0 },
+  particles: [],
+  floats: [],              // floating pickup notifications
+  time: 0,
+  dayT: 0.3,               // 0..1 (dawn->day->dusk->night)
+  paused: false,
+  // Dialogue
+  dialog: null,
+  // Quest / story progression
+  questIdx: 0,
+  ending: null,
+  cooldowns: { Q: 0, E: 0, R: 0, F: 0 },
+  // Music-ish ambient
+  ambientT: 0,
+  // Menu focus
+  menuFocus: 0,
+  charFocus: 0,
+  choiceFocus: 0,
+  // Screen transitions
+  fading: 0,
+  fadeCB: null,
+};
+
+// --------------------------- World Layout ---------------------------------
+/*
+ * The world of Emergreen — a civilization living in the crown of a colossal tree.
+ * Scenes are horizontal side-scrolling maps connected by exits.
+ */
+function buildWorld() {
+  const scenes = {};
+
+  const s = (key, cfg) => {
+    scenes[key] = Object.assign({
+      key, w: 2400, h: 800,
+      biome: 'canopy',
+      ambient: 'leaves',
+      platforms: [],
+      hazards: [],
+      decor: [],
+      props: [],
+      npcs: [],
+      pickups: [],
+      exits: [],
+      vines: [],
+      soilPatches: [],
+      title: '',
+    }, cfg);
+  };
+
+  // Helper builder to make ground + platforms
+  const platform = (x, y, w, h, kind = 'branch') => ({ x, y, w, h, kind });
+
+  // --------- GROVE (starting) --------------------------------------------
+  s('grove', {
+    title: 'Sunleaf Grove',
+    biome: 'canopy',
+    w: 3000, h: 800,
+    platforms: [
+      platform(0, 720, 3000, 80, 'ground-branch'),   // main branch
+      platform(180, 560, 220, 20, 'branch'),
+      platform(520, 500, 260, 20, 'branch'),
+      platform(880, 440, 220, 20, 'branch'),
+      platform(1220, 500, 260, 20, 'branch'),
+      platform(1560, 560, 220, 20, 'branch'),
+      platform(1900, 480, 300, 20, 'branch'),
+      platform(2300, 560, 300, 20, 'branch'),
+    ],
+    decor: [
+      { kind: 'trunk', x: 0, y: 0, w: 3000, h: 800 },
+      { kind: 'lantern', x: 260, y: 500 },
+      { kind: 'lantern', x: 1560, y: 500 },
+      { kind: 'signpost', x: 620, y: 690, text: 'Grove Home' },
+      { kind: 'flower', x: 940, y: 700 },
+      { kind: 'flower', x: 1400, y: 700 },
+      { kind: 'flower', x: 2000, y: 700 },
+      { kind: 'nestbed', x: 300, y: 680 },
+      { kind: 'water-basin', x: 780, y: 680 },
+    ],
+    soilPatches: [
+      { x: 1080, y: 720, used: false, id: 'grove-soil-1' },
+      { x: 2140, y: 720, used: false, id: 'grove-soil-2' },
+    ],
+    pickups: [
+      { kind: 'sunfruit', x: 620, y: 470 },
+      { kind: 'sunfruit', x: 1300, y: 460 },
+      { kind: 'seed',     x: 1970, y: 440 },
+    ],
+    props: [
+      { id: 'grove-crate', kind: 'crate', x: 2260, y: 690, w: 40, h: 40, weight: 1 },
+    ],
+    npcs: [
+      { id: 'elder', kind: 'elder', x: 720, y: 686, name: 'Elder Milaen', patrol: [700, 780] },
+      { id: 'child', kind: 'child', x: 1440, y: 686, name: 'Little Iris', patrol: [1400, 1500] },
+    ],
+    exits: [
+      { x: 2960, y: 640, w: 40, h: 80, to: 'greatbranch', spawn: { x: 80, y: 640 }, label: '→ Great Branch' },
+    ],
+  });
+
+  // --------- GREAT BRANCH -------------------------------------------------
+  s('greatbranch', {
+    title: 'The Great Branch',
+    biome: 'canopy',
+    w: 3400, h: 800,
+    platforms: [
+      platform(0, 720, 3400, 80, 'ground-branch'),
+      platform(220, 620, 160, 20, 'branch'),
+      platform(460, 540, 200, 20, 'branch'),
+      platform(740, 460, 220, 20, 'branch'),
+      platform(1040, 380, 220, 20, 'branch'),
+      platform(1360, 460, 220, 20, 'branch'),
+      platform(1680, 380, 200, 20, 'branch'),
+      platform(1980, 300, 220, 20, 'branch'),
+      platform(2300, 380, 200, 20, 'branch'),
+      platform(2600, 460, 220, 20, 'branch'),
+      platform(2900, 540, 220, 20, 'branch'),
+      platform(3160, 620, 200, 20, 'branch'),
+    ],
+    decor: [
+      { kind: 'trunk', x: 0, y: 0, w: 3400, h: 800 },
+      { kind: 'lantern', x: 380, y: 560 },
+      { kind: 'lantern', x: 1420, y: 400 },
+      { kind: 'lantern', x: 2660, y: 400 },
+      { kind: 'bridge', x: 800, y: 720, w: 240 },
+      { kind: 'bridge', x: 1700, y: 720, w: 260 },
+      { kind: 'signpost', x: 3060, y: 690, text: '→ Old Sanctum' },
+      { kind: 'flower', x: 1200, y: 700 },
+      { kind: 'flower', x: 2200, y: 700 },
+    ],
+    soilPatches: [
+      { x: 1240, y: 720, used: false, id: 'gb-soil-1' },
+      { x: 2820, y: 720, used: false, id: 'gb-soil-2' },
+    ],
+    pickups: [
+      { kind: 'sunfruit', x: 780, y: 420 },
+      { kind: 'sunfruit', x: 2020, y: 260 },
+      { kind: 'silver-nut', x: 1080, y: 340 },
+      { kind: 'seed', x: 2340, y: 340 },
+    ],
+    props: [
+      { id: 'gb-crate-1', kind: 'crate', x: 1220, y: 680, w: 40, h: 40, weight: 1 },
+    ],
+    npcs: [
+      { id: 'watcher', kind: 'watcher', x: 2000, y: 686, name: 'Watcher Sulmen', patrol: [1900, 2160] },
+    ],
+    exits: [
+      { x: 0, y: 640, w: 40, h: 80, to: 'grove', spawn: { x: 2900, y: 640 }, label: '← Grove' },
+      { x: 3360, y: 540, w: 40, h: 80, to: 'sanctum', spawn: { x: 80, y: 620 }, label: '→ Old Sanctum' },
+    ],
+  });
+
+  // --------- OLD SANCTUM --------------------------------------------------
+  s('sanctum', {
+    title: 'The Old Sanctum',
+    biome: 'sanctum',
+    w: 2600, h: 800,
+    platforms: [
+      platform(0, 720, 2600, 80, 'trunk-floor'),
+      platform(220, 600, 200, 20, 'ledge'),
+      platform(500, 500, 200, 20, 'ledge'),
+      platform(820, 420, 200, 20, 'ledge'),
+      platform(1180, 500, 200, 20, 'ledge'),
+      platform(1520, 420, 200, 20, 'ledge'),
+      platform(1860, 340, 200, 20, 'ledge'),
+      platform(2200, 420, 200, 20, 'ledge'),
+    ],
+    decor: [
+      { kind: 'sanctum-wall', x: 0, y: 0, w: 2600, h: 800 },
+      { kind: 'pillar', x: 320, y: 720 },
+      { kind: 'pillar', x: 700, y: 720 },
+      { kind: 'pillar', x: 1080, y: 720 },
+      { kind: 'pillar', x: 1460, y: 720 },
+      { kind: 'pillar', x: 1840, y: 720 },
+      { kind: 'pillar', x: 2220, y: 720 },
+      { kind: 'brazier', x: 480, y: 700 },
+      { kind: 'brazier', x: 1240, y: 700 },
+      { kind: 'brazier', x: 2020, y: 700 },
+      { kind: 'mural', x: 1400, y: 300, w: 240, h: 180 },
+    ],
+    soilPatches: [
+      { x: 1620, y: 720, used: false, id: 'sanc-soil-1' },
+    ],
+    pickups: [
+      { kind: 'silver-nut', x: 900, y: 380 },
+      { kind: 'ember', x: 1940, y: 300 },
+    ],
+    props: [
+      { id: 'sanc-slab', kind: 'slab', x: 1240, y: 680, w: 60, h: 40, weight: 2 },
+    ],
+    npcs: [
+      { id: 'keeper', kind: 'keeper', x: 400, y: 686, name: 'Keeper Ohsann', patrol: [340, 460] },
+    ],
+    exits: [
+      { x: 0, y: 640, w: 40, h: 80, to: 'greatbranch', spawn: { x: 3260, y: 620 }, label: '← Great Branch' },
+      { id: 'seal', x: 2440, y: 620, w: 60, h: 100, to: 'shaft', spawn: { x: 80, y: 200 }, label: 'Sealed Door', locked: true },
+    ],
+  });
+
+  // --------- SHAFT (descent) ---------------------------------------------
+  s('shaft', {
+    title: 'The Descent',
+    biome: 'shaft',
+    w: 1200, h: 2200,
+    platforms: [
+      platform(0, 300, 300, 20, 'ledge'),
+      platform(360, 460, 200, 20, 'ledge'),
+      platform(120, 620, 200, 20, 'ledge'),
+      platform(440, 780, 200, 20, 'ledge'),
+      platform(160, 940, 200, 20, 'ledge'),
+      platform(480, 1100, 200, 20, 'ledge'),
+      platform(180, 1260, 200, 20, 'ledge'),
+      platform(500, 1420, 200, 20, 'ledge'),
+      platform(200, 1580, 200, 20, 'ledge'),
+      platform(500, 1740, 200, 20, 'ledge'),
+      platform(140, 1900, 320, 20, 'ledge'),
+      platform(0, 2100, 1200, 100, 'roots'),
+    ],
+    decor: [
+      { kind: 'shaft-wall', x: 0, y: 0, w: 1200, h: 2200 },
+      { kind: 'glowmoss', x: 260, y: 500 },
+      { kind: 'glowmoss', x: 540, y: 820 },
+      { kind: 'glowmoss', x: 220, y: 1300 },
+      { kind: 'glowmoss', x: 560, y: 1740 },
+      { kind: 'glowmoss', x: 260, y: 1940 },
+      { kind: 'root-cluster', x: 0, y: 2020 },
+      { kind: 'root-cluster', x: 800, y: 2020 },
+    ],
+    pickups: [
+      { kind: 'ember', x: 260, y: 260 },
+      { kind: 'ember', x: 220, y: 900 },
+      { kind: 'ember', x: 240, y: 1860 },
+      { kind: 'silver-nut', x: 560, y: 740 },
+    ],
+    exits: [
+      { x: 0, y: 220, w: 40, h: 80, to: 'sanctum', spawn: { x: 2380, y: 620 }, label: '↑ Sanctum' },
+      { x: 560, y: 2020, w: 80, h: 80, to: 'below', spawn: { x: 120, y: 600 }, label: 'Below the Root' },
+    ],
+  });
+
+  // --------- BELOW (the truth) -------------------------------------------
+  s('below', {
+    title: 'Below the Root',
+    biome: 'below',
+    w: 3800, h: 800,
+    platforms: [
+      platform(0, 700, 3800, 100, 'earth'),
+      platform(400, 580, 180, 20, 'stone'),
+      platform(700, 500, 200, 20, 'stone'),
+      platform(1000, 420, 200, 20, 'stone'),
+      platform(1320, 500, 200, 20, 'stone'),
+      platform(1640, 580, 200, 20, 'stone'),
+      platform(2000, 500, 200, 20, 'stone'),
+      platform(2340, 420, 240, 20, 'stone'),
+      platform(2700, 500, 200, 20, 'stone'),
+      platform(3040, 580, 240, 20, 'stone'),
+    ],
+    decor: [
+      { kind: 'sky-below', x: 0, y: 0, w: 3800, h: 800 },
+      { kind: 'meadow', x: 0, y: 680 },
+      { kind: 'fern', x: 320, y: 670 },
+      { kind: 'fern', x: 1200, y: 670 },
+      { kind: 'fern', x: 1900, y: 670 },
+      { kind: 'fern', x: 2700, y: 670 },
+      { kind: 'crystal', x: 900, y: 660 },
+      { kind: 'crystal', x: 2540, y: 660 },
+      { kind: 'signpost', x: 260, y: 670, text: 'The gate stands open.' },
+      { kind: 'flower', x: 700, y: 680 },
+      { kind: 'flower', x: 1500, y: 680 },
+      { kind: 'flower', x: 2200, y: 680 },
+      { kind: 'flower', x: 3000, y: 680 },
+    ],
+    soilPatches: [
+      { x: 1700, y: 700, used: false, id: 'below-soil-1' },
+    ],
+    pickups: [
+      { kind: 'silver-nut', x: 1040, y: 380 },
+      { kind: 'sunfruit', x: 2400, y: 380 },
+      { kind: 'ember', x: 3080, y: 540 },
+    ],
+    props: [],
+    npcs: [
+      { id: 'stranger', kind: 'stranger', x: 1700, y: 666, name: 'The Waiting One', patrol: [1650, 1780] },
+    ],
+    exits: [
+      { x: 0, y: 620, w: 40, h: 80, to: 'shaft', spawn: { x: 560, y: 2020 }, label: '↑ Ascent' },
+      { id: 'meet', x: 3720, y: 620, w: 40, h: 80, to: 'ending', spawn: { x: 0, y: 0 }, label: '→ Onward' },
+    ],
+  });
+
+  return { scenes };
+}
+
+// --------------------------- Story / Quests -------------------------------
+const QUESTS = [
+  { id: 'awaken', goal: 'Speak with Elder Milaen in the Grove.',
+    hint: 'The Elder rests near the water basin. Walk close and press [T] to speak.' },
+  { id: 'gather', goal: 'Gather three sunfruit for the morning meal.',
+    hint: 'Sunfruit hang from the branches. Press [↑] near one to pick.' },
+  { id: 'watcher', goal: 'Find the Watcher on the Great Branch.',
+    hint: 'Follow the branch eastward to the pillars of the old sanctum.' },
+  { id: 'keeper', goal: 'Ask Keeper Ohsann about the sealed door.',
+    hint: 'The Keeper walks among the pillars. Try mindtouch [Q] if his words seem measured.' },
+  { id: 'unseal', goal: 'Coax a vine over the sealed door.',
+    hint: 'A soil-patch waits below the seal. Press [R] on it to grow.' },
+  { id: 'descend', goal: 'Descend the shaft into shadow.',
+    hint: 'Glide [F] to fall lightly. Silvery moss will steady the dark.' },
+  { id: 'meet', goal: 'Speak with the one who waits below.',
+    hint: 'Someone is here. Someone was always here.' },
+  { id: 'choose', goal: 'Choose what to bring back to the branches above.',
+    hint: 'This choice is your own.' },
+];
+
+// --------------------------- Pickups --------------------------------------
+const PICKUPS = {
+  'sunfruit':   { label: 'Sunfruit', color: '#ffcf5a', restore: { vit: 15 }, glow: '#ffb85a' },
+  'silver-nut': { label: 'Silver-nut', color: '#d0e4ff', restore: { spirit: 20 }, glow: '#9ee7ff' },
+  'seed':       { label: 'Seed', color: '#a3c56b', restore: {}, glow: '#c4e17f' },
+  'ember':      { label: 'Emberpetal', color: '#ff7a4a', restore: { spirit: 8, vit: 8 }, glow: '#ffb26b' },
+};
+
+// --------------------------- Dialogue Tree --------------------------------
+/*
+ * A dialogue is a list of nodes. Each node: { speaker, text, choices?: [...] }
+ * A choice: { text, next?: index or 'end', action?: fn }
+ */
+function pickIntro(charKey) {
+  const c = CHARS[charKey];
+  return [
+    { speaker: c.name, text: `You wake in the crown of the great tree. Sunlight sifts through the leaves like a thousand small blessings. Something in the night's dream still tugs at you — a voice, or a memory not your own.` },
+    { speaker: c.name, text: c.intro },
+    { speaker: '', text: 'Elder Milaen waits by the basin. It is time to begin the day.' },
+  ];
+}
+
+const DIALOG = {
+  // NPC ID -> function returning a dialog list, so it can be dynamic
+  elder(char) {
+    const c = CHARS[char];
+    if (state.p.flags.spoken_elder && state.questIdx >= 2) {
+      return [
+        { speaker: 'Elder Milaen', text: `The Watcher on the Great Branch will know if the old signs are true. Go and ask.` },
+      ];
+    }
+    return [
+      { speaker: 'Elder Milaen', text: `Good rising, ${c.name}. You are late — the dew has already lifted from the ferns.` },
+      { speaker: 'Elder Milaen', text: `A dream came to you in the night. I felt it pass. Some of the young have dreamed the same. A voice from below the root, they say.` },
+      { speaker: c.name, text: `Below the root? But — the wardens have always told us the ground is death.` },
+      { speaker: 'Elder Milaen', text: `The wardens tell us many things. Bring me three sunfruit and consider your dream. Then walk to the Great Branch and find the Watcher. If a truth has slipped its wrapping, better we see it plainly.`, action: () => {
+        state.p.flags.spoken_elder = true;
+        advanceQuest('awaken');
+      } },
+    ];
+  },
+  child(char) {
+    return [
+      { speaker: 'Little Iris', text: `Look what I made! Vines, three of them, and I only asked twice.`, choices: [
+        { text: `That's wonderful.`, next: 1 },
+        { text: `Are you frightened of the wardens?`, next: 2 },
+      ] },
+      { speaker: 'Little Iris', text: `Elder says one day I'll grow whole ladders. Then I'll climb down to the roots and see the truth for myself.`, end: true },
+      { speaker: 'Little Iris', text: `A little. But the roots don't feel frightening. They feel like something waiting.`, end: true },
+    ];
+  },
+  watcher(char) {
+    const canMindtouch = CHARS[char].mindtouch >= 2;
+    return [
+      { speaker: 'Watcher Sulmen', text: `Move on, child. The sanctum is closed today. Ceremony business.` },
+      { speaker: 'Watcher Sulmen', text: `There is nothing to see and less to say. Return to your grove.`, choices: [
+        canMindtouch
+          ? { text: `[Mindtouch] Read his surface.`, action: () => {
+              spendSpirit(15);
+              openDialog([
+                { speaker: '(Mindtouch)', text: `Beneath his calm — a low hum of fear. Images: a broken seal, a voice, the Keeper hurrying.` },
+                { speaker: '(Mindtouch)', text: `And a name — Ohsann. He is the one who knows.`, action: () => advanceQuest('watcher') },
+              ]);
+            } }
+          : { text: `Move on then.`, action: () => advanceQuest('watcher') },
+        { text: `Move on then.`, end: true, action: () => advanceQuest('watcher') },
+      ] },
+    ];
+  },
+  keeper(char) {
+    const canMindtouch = CHARS[char].mindtouch >= 2;
+    const canGrow = CHARS[char].grow >= 2;
+    return [
+      { speaker: 'Keeper Ohsann', text: `${CHARS[char].name}. You should not be here. The sanctum is under seal.` },
+      { speaker: 'Keeper Ohsann', text: `A dream has passed among the young. Sit, and I will speak plainly — as much as I can.`, choices: [
+        { text: `What lies beyond the sealed door?`, next: 2 },
+        { text: `Why must it stay sealed?`, next: 3 },
+        canMindtouch
+          ? { text: `[Mindtouch] Feel for what he will not say.`, action: () => {
+              spendSpirit(20);
+              openDialog([
+                { speaker: '(Mindtouch)', text: `He aches with a very old grief. He knows the danger below is not what the wardens named it.` },
+                { speaker: '(Mindtouch)', text: `He wishes someone would open the door. He will not do it himself.`, action: () => advanceQuest('keeper') },
+              ]);
+            } }
+          : { text: `I will find another way.`, end: true, action: () => advanceQuest('keeper') },
+      ] },
+      { speaker: 'Keeper Ohsann', text: `A shaft, and past it a place we have not walked in three lifetimes. There is nothing forbidden about it — only that we have forgotten how to look at it.`, action: () => advanceQuest('keeper') },
+      { speaker: 'Keeper Ohsann', text: `Because when the door was sealed, an easy silence took its place. Silence is soft. Truth is not.`, choices: [
+        canGrow
+          ? { text: `Silence has grown too soft. I will coax a vine over the seal.`, end: true, action: () => { advanceQuest('keeper'); state.p.flags.keeper_hint = true; } }
+          : { text: `Then I will find someone who can open it.`, end: true, action: () => advanceQuest('keeper') },
+      ] },
+    ];
+  },
+  stranger(char) {
+    return [
+      { speaker: 'The Waiting One', text: `Then a door has opened. I have waited so long I forgot the shape of company.` },
+      { speaker: CHARS[char].name, text: `You — you are a person. The wardens said only monsters lived below the root.` },
+      { speaker: 'The Waiting One', text: `A long time ago the wardens told your people the ground was death, so that no one would come to see it. It was easier than saying: we were afraid, and afraid people say strange things.` },
+      { speaker: 'The Waiting One', text: `Below the root there is grass, and there is sun, and there are people who have quietly kept the flowers for you. We are your kin.` },
+      { speaker: CHARS[char].name, text: `Why did you never call up to us?` },
+      { speaker: 'The Waiting One', text: `We did. Every year at the turning of the leaves. But the sanctum was closed, and no one dreamed our voices — until now.`, action: () => advanceQuest('meet') },
+      { speaker: 'The Waiting One', text: `You must decide what to carry back. A truth changes the shape of everything it touches.`, choices: [
+        { text: `I will bring the truth to the branches, whatever the cost.`, action: () => { state.ending = 'truth'; endGame(); } },
+        { text: `I will bring a hope, and speak only softly, so the wardens are not alarmed.`, action: () => { state.ending = 'balance'; endGame(); } },
+        { text: `I will stay below, and let the branches find their own way.`, action: () => { state.ending = 'stay'; endGame(); } },
+      ] },
+    ];
+  },
+};
+
+// --------------------------- Endings --------------------------------------
+const ENDINGS = {
+  truth: {
+    title: 'The Truth Told',
+    body: [
+      'You climbed back into the sunlight of the crown and spoke plainly, in the open, to any who would listen.',
+      'The wardens were angry. The Elder wept. The children put down their carved sticks and asked for the names of the people below.',
+      'The seal was broken and never remade. It was not an easy year. It was not an easy generation.',
+      'But a hundred summers later, a child of the branches will marry a child of the meadow beneath a tree so tall no one remembers who first planted it.',
+    ],
+  },
+  balance: {
+    title: 'A Softer Path',
+    body: [
+      'You brought the hope back in a whisper. You told it to those you trusted, and they to those they trusted.',
+      'The seal remained on the door, but the door was often left ajar.',
+      'Some of your people have gone down. Some of the people below have come up. Nothing is announced, and nothing is forbidden.',
+      'It is not the truth you were asked to carry. It is the truth your people could bear. That is a kind of honesty too.',
+    ],
+  },
+  stay: {
+    title: 'Down Among the Ferns',
+    body: [
+      'You stayed. The meadow was strange to you at first — the sky beneath, the earth beneath that, no branches to hold you.',
+      'You learned. You planted a garden.',
+      'Someday, the wardens above will notice you are gone. Someone will look for you, and find themselves standing at the open door.',
+      'That is enough. That is a beginning.',
+    ],
+  },
+};
+
+// --------------------------- Helpers --------------------------------------
+function toast(msg, ms = 1600) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('on'), ms);
+}
+
+function banner(text, sub = '', ms = 2400) {
+  const el = $('#banner');
+  el.querySelector('.text').textContent = text;
+  el.querySelector('.sub').textContent = sub;
+  el.classList.add('on');
+  clearTimeout(banner._t);
+  banner._t = setTimeout(() => el.classList.remove('on'), ms);
+}
+
+function fadeTo(cb) {
+  const el = $('#fade');
+  el.classList.add('on');
+  setTimeout(() => {
+    cb && cb();
+    setTimeout(() => el.classList.remove('on'), 60);
+  }, 720);
+}
+
+function spendSpirit(n) {
+  state.p.spirit = clamp(state.p.spirit - n, 0, state.p.spiritMax);
+}
+function spendVit(n) {
+  state.p.vit = clamp(state.p.vit - n, 0, state.p.vitMax);
+}
+
+function updateHUD() {
+  $('#bar-spirit').style.width = (100 * state.p.spirit / state.p.spiritMax) + '%';
+  $('#bar-vitality').style.width = (100 * state.p.vit / state.p.vitMax) + '%';
+  const abList = $('#abilities');
+  if (!abList.dataset.built) {
+    const items = [
+      { k: 'Q', g: '◈', name: 'Mindtouch' },
+      { k: 'E', g: '⇧', name: 'Lift' },
+      { k: 'R', g: '❦', name: 'Grow' },
+      { k: 'F', g: '❋', name: 'Glide' },
+    ];
+    abList.innerHTML = items.map(a => `
+      <div class="ability" data-k="${a.k}" title="${a.name}">
+        <div class="glyph">${a.g}</div>
+        <div class="key">${a.k}</div>
+      </div>`).join('');
+    abList.dataset.built = '1';
+  }
+  const char = state.char ? CHARS[state.char] : null;
+  if (char) {
+    $$('#abilities .ability').forEach(el => {
+      const k = el.dataset.k;
+      const need = { Q: 'mindtouch', E: 'lift', R: 'grow', F: 'glide' }[k];
+      const strong = char[need] >= 2;
+      el.classList.toggle('locked', !strong);
+      const key = { Q: 'Q', E: 'E', R: 'R', F: 'F' }[k];
+      const cd = state.cooldowns[key] || 0;
+      el.classList.toggle('cool', cd > 0);
+    });
+  }
+  const qEl = $('#quest');
+  const q = QUESTS[state.questIdx];
+  if (q) {
+    qEl.querySelector('.goal').textContent = q.goal;
+    qEl.querySelector('.hint').textContent = q.hint;
+    qEl.classList.add('on');
+  } else {
+    qEl.classList.remove('on');
+  }
+}
+
+function advanceQuest(id) {
+  const cur = QUESTS[state.questIdx];
+  if (cur && cur.id === id) {
+    state.questIdx++;
+    const nx = QUESTS[state.questIdx];
+    if (nx) {
+      banner('Path unfolds', nx.goal);
+      sfx.reveal();
+    }
+    updateHUD();
+  }
+}
+
+// --------------------------- Dialogue Runtime -----------------------------
+function openDialog(nodes) {
+  state.dialog = { nodes, idx: 0, charT: 0, done: false };
+  state.scene = 'dialog';
+  state.choiceFocus = 0;
+  renderDialog();
+  $('#dialogue').classList.add('on');
+}
+function closeDialog() {
+  $('#dialogue').classList.remove('on');
+  state.dialog = null;
+  state.scene = 'playing';
+}
+function renderDialog() {
+  const d = state.dialog;
+  if (!d) return;
+  const n = d.nodes[d.idx];
+  if (!n) return closeDialog();
+  $('#dialogue .speaker').textContent = n.speaker || '';
+  const bodyEl = $('#dialogue .body');
+  const target = n.text || '';
+  const shown = target.slice(0, Math.floor(d.charT));
+  bodyEl.textContent = shown;
+  const choicesEl = $('#dialogue .choices');
+  choicesEl.innerHTML = '';
+  d.done = d.charT >= target.length;
+  if (d.done && n.choices && n.choices.length) {
+    n.choices.forEach((c, i) => {
+      const el = document.createElement('div');
+      el.className = 'choice' + (i === state.choiceFocus ? ' focus' : '');
+      el.textContent = '› ' + c.text;
+      el.addEventListener('click', () => selectChoice(i));
+      choicesEl.appendChild(el);
+    });
+  }
+}
+function selectChoice(i) {
+  const d = state.dialog;
+  if (!d) return;
+  const n = d.nodes[d.idx];
+  if (!n.choices) return;
+  const c = n.choices[i];
+  if (!c) return;
+  if (c.action) c.action();
+  if (c.end) return closeDialog();
+  if (typeof c.next === 'number') {
+    d.idx = c.next; d.charT = 0; state.choiceFocus = 0;
+    return renderDialog();
+  }
+  // default: end after a choice
+  return closeDialog();
+}
+function tickDialog(dt) {
+  const d = state.dialog;
+  if (!d) return;
+  const n = d.nodes[d.idx];
+  if (!n) return closeDialog();
+  const target = n.text || '';
+  if (d.charT < target.length) {
+    d.charT += dt * 40;
+    if (d.charT % 3 < 0.4) sfx.dialog();
+    d.charT = Math.min(d.charT, target.length);
+    renderDialog();
+  }
+  if (wasPressed('Space') || wasPressed('Enter')) {
+    if (!d.done) {
+      d.charT = target.length; renderDialog();
+    } else if (n.choices && n.choices.length) {
+      selectChoice(state.choiceFocus);
+    } else {
+      if (n.action) n.action();
+      d.idx++; d.charT = 0;
+      if (d.idx >= d.nodes.length) return closeDialog();
+      renderDialog();
+    }
+  }
+  if (n.choices && d.done) {
+    if (wasPressed('ArrowDown')) { state.choiceFocus = (state.choiceFocus + 1) % n.choices.length; renderDialog(); }
+    if (wasPressed('ArrowUp')) { state.choiceFocus = (state.choiceFocus - 1 + n.choices.length) % n.choices.length; renderDialog(); }
+  }
+}
+
+// --------------------------- Physics --------------------------------------
+const GRAVITY = 1500;
+const MOVE = 300;
+const MOVE_ACCEL = 1800;
+const AIR_ACCEL = 1100;
+const FRICTION = 1800;
+const JUMP_V = 760;
+const GLIDE_GRAV = 240;
+const MAX_FALL = 900;
+const COYOTE = 0.12;      // ms after leaving ground you can still jump
+const JUMP_BUFFER = 0.10; // press-jump-early grace
+
+function scene() { return state.world.scenes[state.cur]; }
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function collidePlatforms(e, plats) {
+  // Horizontal
+  e.x += e.vx * e.dt;
+  for (const p of plats) {
+    const eb = { x: e.x - e.w/2, y: e.y - e.h, w: e.w, h: e.h };
+    if (rectsOverlap(eb, p)) {
+      if (e.vx > 0) e.x = p.x - e.w/2;
+      else if (e.vx < 0) e.x = p.x + p.w + e.w/2;
+      e.vx = 0;
+    }
+  }
+  // Vertical
+  e.vy += (e.gliding ? GLIDE_GRAV : GRAVITY) * e.dt;
+  e.vy = Math.min(e.vy, MAX_FALL);
+  e.y += e.vy * e.dt;
+  e.onGround = false;
+  for (const p of plats) {
+    const eb = { x: e.x - e.w/2, y: e.y - e.h, w: e.w, h: e.h };
+    if (rectsOverlap(eb, p)) {
+      if (e.vy > 0) {
+        e.y = p.y;
+        e.vy = 0;
+        e.onGround = true;
+      } else if (e.vy < 0) {
+        e.y = p.y + p.h + e.h;
+        e.vy = 0;
+      }
+    }
+  }
+}
+
+// --------------------------- Player Update --------------------------------
+function updatePlayer(dt) {
+  const p = state.p;
+  p.dt = dt;
+  const char = CHARS[state.char];
+  // Horizontal input
+  let ax = 0;
+  const kL = key('ArrowLeft') || key('KeyA');
+  const kR = key('ArrowRight') || key('KeyD');
+  if (kL) { ax = -1; p.facing = -1; }
+  if (kR) { ax = 1; p.facing = 1; }
+  const accel = p.onGround ? MOVE_ACCEL : AIR_ACCEL;
+  if (ax !== 0) {
+    p.vx += ax * accel * dt;
+    p.vx = clamp(p.vx, -MOVE, MOVE);
+  } else if (p.onGround) {
+    const f = FRICTION * dt;
+    if (Math.abs(p.vx) <= f) p.vx = 0;
+    else p.vx -= f * sign(p.vx);
+  }
+  // Jump — with coyote time and press buffer
+  p._coyote = (p.onGround ? COYOTE : Math.max(0, (p._coyote || 0) - dt));
+  if (wasPressed('Space') || wasPressed('ArrowUp') || wasPressed('KeyW')) p._jumpBuffer = JUMP_BUFFER;
+  else p._jumpBuffer = Math.max(0, (p._jumpBuffer || 0) - dt);
+  if (p._jumpBuffer > 0 && p._coyote > 0) {
+    p.vy = -JUMP_V;
+    p.onGround = false;
+    p._coyote = 0;
+    p._jumpBuffer = 0;
+    sfx.jump();
+  }
+  // Variable-height jump: release Space to cut vertical velocity
+  if (!(key('Space') || key('ArrowUp') || key('KeyW')) && p.vy < -260) {
+    p.vy = Math.max(p.vy, -260);
+  }
+  // Glide (hold F while airborne, if character has glide)
+  p.gliding = false;
+  if (!p.onGround && key('KeyF') && char.glide >= 2 && p.vy > 0) {
+    p.gliding = true;
+    if (state.time - (p._lastGlide||0) > 0.15) { sfx.glide(); p._lastGlide = state.time; }
+  }
+  // Collide
+  const scn = scene();
+  const wasOnGround = p.onGround;
+  collidePlatforms(p, scn.platforms);
+  // land sound
+  if (!wasOnGround && p.onGround && Math.abs(p.vy) < 0.1) sfx.land();
+
+  // Bounds
+  p.x = clamp(p.x, 20, scn.w - 20);
+  if (p.y > scn.h + 80) {
+    // fell — respawn
+    fadeTo(() => {
+      p.y = 200; p.vy = 0;
+      spendVit(10);
+      toast('You caught yourself on a branch.');
+    });
+  }
+
+  // Anim
+  p.animT += dt * (Math.abs(p.vx) / 60 + 1);
+
+  // Interactions: pickups
+  for (let i = scn.pickups.length - 1; i >= 0; i--) {
+    const pu = scn.pickups[i];
+    if (dist2(pu.x, pu.y, p.x, p.y - p.h/2) < 32*32) {
+      pickUp(pu);
+      scn.pickups.splice(i, 1);
+    }
+  }
+
+  // Interactions: NPCs — press T when near
+  if (wasPressed('KeyT') || wasPressed('Enter')) {
+    let best = null, bd = 60*60;
+    for (const npc of scn.npcs) {
+      const d = dist2(npc.x, npc.y - 20, p.x, p.y - p.h/2);
+      if (d < bd) { bd = d; best = npc; }
+    }
+    if (best) {
+      const nodes = DIALOG[best.kind] ? DIALOG[best.kind](state.char) : [{ speaker: best.name, text: '...' }];
+      openDialog(nodes);
+    } else {
+      // Also try soil patches for grow
+      // fallthrough
+    }
+  }
+
+  // Ability: Mindtouch Q — passive scan (autocast at NPC if near and strong)
+  if (wasPressed('KeyQ') && state.cooldowns.Q <= 0 && char.mindtouch >= 2 && p.spirit >= 15) {
+    // Find nearest NPC
+    let best = null, bd = 220*220;
+    for (const npc of scn.npcs) {
+      const d = dist2(npc.x, npc.y - 20, p.x, p.y - p.h/2);
+      if (d < bd) { bd = d; best = npc; }
+    }
+    if (best) {
+      spendSpirit(15);
+      state.cooldowns.Q = 1.2;
+      sfx.power();
+      spawnMindtouchFX(best);
+      const hint = mindtouchLine(best);
+      toast(`(${best.name}) ${hint}`, 2400);
+    } else {
+      toast('No mind is near enough.');
+    }
+  }
+
+  // Ability: Lift E — hold to carry a prop
+  if (char.lift >= 2) {
+    if (!p.lifting) {
+      if (wasPressed('KeyE') && p.spirit >= 10) {
+        let best = null, bd = 90*90;
+        for (const pr of scn.props) {
+          if (pr.weight > char.lift) continue;
+          const d = dist2(pr.x + pr.w/2, pr.y + pr.h/2, p.x, p.y - p.h/2);
+          if (d < bd) { bd = d; best = pr; }
+        }
+        if (best) {
+          p.lifting = best;
+          best.held = true;
+          spendSpirit(10);
+          sfx.lift();
+        }
+      }
+    } else {
+      // Follow player
+      const pr = p.lifting;
+      pr.x = p.x - pr.w/2 + p.facing * 22;
+      pr.y = p.y - p.h - pr.h - 4;
+      // Drain spirit continuously
+      p.spirit = clamp(p.spirit - dt * 3, 0, p.spiritMax);
+      if (wasPressed('KeyE') || p.spirit <= 0) {
+        pr.held = false;
+        // drop
+        p.lifting = null;
+      }
+    }
+  }
+
+  // Ability: Grow R — at a soil patch
+  if (wasPressed('KeyR') && char.grow >= 2 && p.spirit >= 20) {
+    let best = null, bd = 60*60;
+    for (const sp of scn.soilPatches) {
+      if (sp.used) continue;
+      const d = dist2(sp.x, sp.y, p.x, p.y);
+      if (d < bd) { bd = d; best = sp; }
+    }
+    if (best) {
+      spendSpirit(20);
+      sfx.grow();
+      growVine(best);
+      state.cooldowns.R = 2.0;
+    }
+  }
+
+  // Exits
+  for (const ex of scn.exits) {
+    if (rectsOverlap({ x: p.x - p.w/2, y: p.y - p.h, w: p.w, h: p.h }, ex)) {
+      if (ex.locked && !state.p.flags['unsealed_' + ex.id]) {
+        toast('The way is sealed.');
+        continue;
+      }
+      const to = ex.to, spawn = ex.spawn;
+      if (to === 'ending') {
+        endGame();
+        return;
+      }
+      fadeTo(() => {
+        state.cur = to;
+        p.x = spawn.x; p.y = spawn.y; p.vx = 0; p.vy = 0;
+        state.cam.x = clamp(p.x - W/2, 0, scene().w - W);
+        state.cam.y = clamp(p.y - H/2, 0, scene().h - H);
+        banner(scene().title, '', 1800);
+        // quest triggers
+        if (to === 'shaft') advanceQuest('unseal');
+        if (to === 'below') advanceQuest('descend');
+      });
+      return;
+    }
+  }
+
+  // Cooldowns
+  for (const k in state.cooldowns) state.cooldowns[k] = Math.max(0, state.cooldowns[k] - dt);
+
+  // Slow spirit regen
+  p.spirit = clamp(p.spirit + dt * 4, 0, p.spiritMax);
+  p.vit = clamp(p.vit + dt * 0.5, 0, p.vitMax);
+}
+
+function mindtouchLine(npc) {
+  switch (npc.kind) {
+    case 'elder':   return `worries: the young have all dreamed the same thing`;
+    case 'child':   return `wonder: what does the ground smell like?`;
+    case 'watcher': return `fear: the seal is thinner than they were told`;
+    case 'keeper':  return `weary hope: someone else must be brave enough`;
+    case 'stranger':return `patience: at last, at last`;
+  }
+  return `quiet...`;
+}
+
+function pickUp(pu) {
+  const def = PICKUPS[pu.kind];
+  state.p.inv[pu.kind] = (state.p.inv[pu.kind] || 0) + 1;
+  if (def.restore.spirit) state.p.spirit = clamp(state.p.spirit + def.restore.spirit, 0, state.p.spiritMax);
+  if (def.restore.vit)    state.p.vit    = clamp(state.p.vit + def.restore.vit, 0, state.p.vitMax);
+  spawnFloat(pu.x, pu.y, '+ ' + def.label, def.glow);
+  sfx.pickup();
+
+  // Quest: gather three sunfruit
+  if (state.questIdx === 1 && pu.kind === 'sunfruit') {
+    const n = state.p.inv['sunfruit'] || 0;
+    if (n >= 3) advanceQuest('gather');
+    else toast(`Sunfruit gathered: ${n}/3`);
+  }
+}
+
+function growVine(sp) {
+  sp.used = true;
+  const scn = scene();
+  const height = 300;
+  scn.vines = scn.vines || [];
+  scn.vines.push({ x: sp.x, y0: sp.y, height, growT: 0, dur: 1.2 });
+  // Add a platform at the top of the vine
+  scn.platforms.push({ x: sp.x - 40, y: sp.y - height, w: 80, h: 12, kind: 'vine-top' });
+  for (let i = 0; i < 20; i++) {
+    state.particles.push({
+      x: sp.x + rand(-8,8), y: sp.y,
+      vx: rand(-30, 30), vy: rand(-120, -40),
+      life: 1.2, maxLife: 1.2,
+      color: '#c4e17f', size: rand(1.5, 3),
+    });
+  }
+  // Unlock sealed exit near this patch (specifically for sanc-soil-1)
+  if (sp.id === 'sanc-soil-1') {
+    for (const ex of scn.exits) {
+      if (ex.locked && ex.id === 'seal') {
+        ex.locked = false;
+        state.p.flags['unsealed_seal'] = true;
+        banner('The seal breaks', 'A vine has taken the door.');
+        sfx.reveal();
+      }
+    }
+  }
+}
+
+// --------------------------- NPC Update -----------------------------------
+function updateNPCs(dt) {
+  const scn = scene();
+  for (const npc of scn.npcs) {
+    if (!npc._t) npc._t = 0;
+    npc._t += dt;
+    if (npc.patrol) {
+      const [a, b] = npc.patrol;
+      const t = (Math.sin(npc._t * 0.6) + 1) / 2;
+      npc.x = a + (b - a) * t;
+    }
+  }
+}
+
+// --------------------------- Particles ------------------------------------
+function updateParticles(dt) {
+  const arr = state.particles;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const p = arr[i];
+    p.life -= dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 40 * dt;
+    if (p.life <= 0) arr.splice(i, 1);
+  }
+  const fl = state.floats;
+  for (let i = fl.length - 1; i >= 0; i--) {
+    const f = fl[i];
+    f.life -= dt;
+    f.y -= 30 * dt;
+    if (f.life <= 0) fl.splice(i, 1);
+  }
+}
+function spawnFloat(x, y, text, color) {
+  state.floats.push({ x, y, text, color, life: 1.2 });
+}
+function spawnMindtouchFX(target) {
+  for (let i = 0; i < 30; i++) {
+    const a = (i / 30) * Math.PI * 2;
+    state.particles.push({
+      x: target.x + Math.cos(a) * 6,
+      y: target.y - 20 + Math.sin(a) * 6,
+      vx: Math.cos(a) * 40, vy: Math.sin(a) * 40 - 20,
+      life: 0.8, maxLife: 0.8,
+      color: '#9ee7ff', size: rand(1.5, 2.5),
+    });
+  }
+}
+
+// --------------------------- Camera ---------------------------------------
+function updateCamera(dt) {
+  const p = state.p;
+  const scn = scene();
+  const targetX = clamp(p.x - W/2, 0, scn.w - W);
+  const targetY = clamp(p.y - H/1.6, 0, scn.h - H);
+  state.cam.x = lerp(state.cam.x, targetX, clamp(dt * 4, 0, 1));
+  state.cam.y = lerp(state.cam.y, targetY, clamp(dt * 4, 0, 1));
+}
+
+// --------------------------- Rendering ------------------------------------
+function skyGradient() {
+  // Day cycle color
+  const t = state.dayT;
+  // dawn(0)->day(0.25)->dusk(0.5)->night(0.75)->dawn(1)
+  const stops = [
+    { t: 0.00, top: '#ffb26b', bot: '#ffe6a7' },  // dawn
+    { t: 0.25, top: '#7cc8ff', bot: '#dff2ff' },  // day
+    { t: 0.50, top: '#ff7a5a', bot: '#ffd0a3' },  // dusk
+    { t: 0.75, top: '#0a1a2a', bot: '#1a2a3a' },  // night
+    { t: 1.00, top: '#ffb26b', bot: '#ffe6a7' },
+  ];
+  let a = stops[0], b = stops[1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (t >= stops[i].t && t <= stops[i+1].t) { a = stops[i]; b = stops[i+1]; break; }
+  }
+  const k = (t - a.t) / (b.t - a.t);
+  return { top: lerpColor(a.top, b.top, k), bot: lerpColor(a.bot, b.bot, k) };
+}
+function lerpColor(a, b, t) {
+  const pa = hex(a), pb = hex(b);
+  const r = Math.round(lerp(pa[0], pb[0], t));
+  const g = Math.round(lerp(pa[1], pb[1], t));
+  const bl = Math.round(lerp(pa[2], pb[2], t));
+  return `rgb(${r},${g},${bl})`;
+}
+function hex(h) {
+  h = h.replace('#','');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
+function drawSky(scn) {
+  if (scn.biome === 'canopy') {
+    const s = skyGradient();
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, s.top);
+    g.addColorStop(1, s.bot);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    // Distant leaves parallax
+    drawDistantCanopy();
+  } else if (scn.biome === 'sanctum') {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#1c2a2a');
+    g.addColorStop(1, '#0a1614');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    drawInteriorWalls();
+  } else if (scn.biome === 'shaft') {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0e0a14');
+    g.addColorStop(1, '#050308');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    drawShaftWalls();
+  } else if (scn.biome === 'below') {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#a7d8ff');
+    g.addColorStop(0.7, '#f6efe0');
+    g.addColorStop(1, '#c4e17f');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    drawSun();
+    drawTreeSilhouette();
+  }
+}
+
+function drawDistantCanopy() {
+  // Parallax far leaves
+  const camx = state.cam.x;
+  const bands = 3;
+  for (let b = 0; b < bands; b++) {
+    const py = 240 + b * 90;
+    const s = 0.2 + b * 0.15;
+    const shift = -camx * s;
+    ctx.save();
+    ctx.globalAlpha = 0.35 - b * 0.06;
+    for (let i = -2; i < 20; i++) {
+      const x = ((i * 260 + shift) % (W + 400)) - 200;
+      const y = py;
+      ctx.fillStyle = ['#4a7f4a','#6ba061','#8fbe75'][b];
+      ctx.beginPath();
+      ctx.arc(x, y, 110 + Math.sin(i)*20, 0, Math.PI*2);
+      ctx.arc(x + 60, y - 20, 90 + Math.cos(i)*18, 0, Math.PI*2);
+      ctx.arc(x + 120, y + 10, 100, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  // Small motes
+  for (let i = 0; i < 30; i++) {
+    const t = state.time * 0.4 + i * 4.7;
+    const x = ((i * 137 + Math.sin(t) * 60) % W + W) % W;
+    const y = ((i * 79 + Math.cos(t) * 30) % (H*0.6));
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(x, y, 2, 2);
+  }
+}
+
+function drawInteriorWalls() {
+  ctx.fillStyle = '#0a1614';
+  ctx.fillRect(0, 0, W, H);
+  // Column pattern
+  const camx = state.cam.x;
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  for (let i = 0; i < 20; i++) {
+    const x = ((i * 260) - camx * 0.4) % (W + 260) - 130;
+    ctx.fillStyle = '#152624';
+    ctx.fillRect(x, 100, 40, H - 200);
+  }
+  ctx.restore();
+}
+
+function drawShaftWalls() {
+  const camx = state.cam.x, camy = state.cam.y;
+  ctx.save();
+  // Rocky sides
+  const scnW = state.world.scenes['shaft'].w;
+  ctx.fillStyle = '#1a1224';
+  ctx.fillRect(0 - camx, 0 - camy, 80, state.world.scenes['shaft'].h);
+  ctx.fillRect(scnW - 80 - camx, 0 - camy, 80, state.world.scenes['shaft'].h);
+  // Distant sparkles
+  for (let i = 0; i < 60; i++) {
+    const t = state.time * 0.6 + i * 3.3;
+    const x = (i * 71 + Math.sin(t) * 40) % 1200;
+    const y = (i * 143) % state.world.scenes['shaft'].h;
+    ctx.fillStyle = 'rgba(158, 231, 255, ' + (0.15 + 0.15 * Math.sin(t)) + ')';
+    ctx.fillRect(x - camx, y - camy, 2, 2);
+  }
+  ctx.restore();
+}
+function drawSun() {
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  const cx = 220 - state.cam.x * 0.2;
+  const cy = 180;
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 240);
+  g.addColorStop(0, 'rgba(255,240,180,0.9)');
+  g.addColorStop(1, 'rgba(255,240,180,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 240, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#ffe6a7';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 40, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+function drawTreeSilhouette() {
+  // Distant colossal tree
+  const camx = state.cam.x;
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#3a5a3a';
+  const bx = 1600 - camx * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(bx - 40, H);
+  ctx.lineTo(bx - 20, 380);
+  ctx.lineTo(bx + 20, 380);
+  ctx.lineTo(bx + 40, H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(bx, 300, 220, 0, Math.PI*2);
+  ctx.arc(bx - 120, 340, 120, 0, Math.PI*2);
+  ctx.arc(bx + 120, 340, 120, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawTrunk(scn) {
+  // Warm brown background trunk texture behind branches for canopy scenes
+  const camx = state.cam.x;
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, 'rgba(60, 40, 30, 0)');
+  g.addColorStop(0.35, 'rgba(80, 55, 40, 0.5)');
+  g.addColorStop(1, 'rgba(50, 35, 25, 0.9)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 400, W, H - 400);
+  // Bark grooves
+  for (let i = 0; i < 24; i++) {
+    const x = ((i * 90) - camx * 0.6) % (W + 90);
+    ctx.fillStyle = 'rgba(30,18,10,0.35)';
+    ctx.fillRect(x - 3, 420, 6, H - 420);
+  }
+  ctx.restore();
+}
+
+function drawPlatform(p, biome) {
+  const x = p.x - state.cam.x, y = p.y - state.cam.y;
+  ctx.save();
+  if (p.kind === 'ground-branch' || p.kind === 'branch') {
+    // Rounded branch top
+    ctx.fillStyle = '#6a4a2e';
+    ctx.beginPath();
+    ctx.moveTo(x, y + 8);
+    ctx.lineTo(x, y + p.h);
+    ctx.lineTo(x + p.w, y + p.h);
+    ctx.lineTo(x + p.w, y + 8);
+    ctx.quadraticCurveTo(x + p.w/2, y - 6, x, y + 8);
+    ctx.fill();
+    // Mossy top
+    ctx.fillStyle = '#4c7a3a';
+    for (let i = 0; i < p.w; i += 8) {
+      const h = 3 + Math.sin(i * 0.13) * 2;
+      ctx.fillRect(x + i, y - h, 8, h + 4);
+    }
+    // Highlights
+    ctx.fillStyle = 'rgba(255,220,140,0.15)';
+    ctx.fillRect(x, y + 4, p.w, 2);
+  } else if (p.kind === 'trunk-floor') {
+    ctx.fillStyle = '#3d2b1e';
+    ctx.fillRect(x, y, p.w, p.h);
+    for (let i = 0; i < p.w; i += 40) {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(x + i, y, 1, p.h);
+    }
+    ctx.fillStyle = 'rgba(180,120,80,0.25)';
+    ctx.fillRect(x, y, p.w, 2);
+  } else if (p.kind === 'ledge') {
+    ctx.fillStyle = '#2a2018';
+    ctx.fillRect(x, y, p.w, p.h);
+    ctx.fillStyle = '#463022';
+    ctx.fillRect(x, y, p.w, 3);
+  } else if (p.kind === 'stone') {
+    ctx.fillStyle = '#6d6455';
+    ctx.fillRect(x, y, p.w, p.h);
+    ctx.fillStyle = '#8f8674';
+    ctx.fillRect(x, y, p.w, 3);
+  } else if (p.kind === 'earth') {
+    ctx.fillStyle = '#553a26';
+    ctx.fillRect(x, y, p.w, p.h);
+    ctx.fillStyle = '#7ad46a';
+    ctx.fillRect(x, y, p.w, 8);
+    // grass tufts
+    for (let i = 0; i < p.w; i += 12) {
+      const gh = 2 + (i % 5);
+      ctx.fillRect(x + i, y - gh, 2, gh);
+    }
+  } else if (p.kind === 'roots') {
+    ctx.fillStyle = '#2a1a14';
+    ctx.fillRect(x, y, p.w, p.h);
+    // Root fibers
+    ctx.strokeStyle = '#4a2f22';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < p.w; i += 26) {
+      ctx.beginPath();
+      ctx.moveTo(x + i, y);
+      ctx.quadraticCurveTo(x + i + 10, y + 30, x + i + 4, y + 60);
+      ctx.stroke();
+    }
+  } else if (p.kind === 'vine-top') {
+    ctx.fillStyle = '#4c7a3a';
+    ctx.fillRect(x, y, p.w, p.h);
+    ctx.fillStyle = '#7ad46a';
+    ctx.fillRect(x, y, p.w, 3);
+  }
+  ctx.restore();
+}
+
+function drawDecor(d, scn) {
+  const camx = state.cam.x, camy = state.cam.y;
+  const x = d.x - camx, y = d.y - camy;
+  switch (d.kind) {
+    case 'trunk': drawTrunk(scn); break;
+    case 'sanctum-wall': /* already drawn */ break;
+    case 'shaft-wall': /* already drawn */ break;
+    case 'sky-below': break;
+    case 'lantern': {
+      // Chain
+      ctx.strokeStyle = 'rgba(40,30,20,0.6)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, y - 40); ctx.lineTo(x, y); ctx.stroke();
+      // Bulb
+      const flick = 1 + 0.2 * Math.sin(state.time * 6 + d.x);
+      ctx.fillStyle = 'rgba(255, 210, 120, ' + (0.45 * flick) + ')';
+      ctx.beginPath(); ctx.arc(x, y, 24 * flick, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#ffe6a7';
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#3a2818'; ctx.lineWidth = 1;
+      ctx.strokeRect(x - 8, y - 8, 16, 16);
+      break;
+    }
+    case 'flower': {
+      // Simple 5-petal bloom
+      const t = state.time * 0.6 + d.x;
+      const sway = Math.sin(t) * 2;
+      ctx.strokeStyle = '#4c7a3a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + sway, y - 14, x + sway, y - 26); ctx.stroke();
+      const cx = x + sway, cy = y - 26;
+      ctx.fillStyle = ['#ffb85a','#ff9aa2','#e0b0ff'][Math.floor(d.x) % 3];
+      for (let i = 0; i < 5; i++) {
+        const a = i * (Math.PI*2/5) + t;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a)*5, cy + Math.sin(a)*5, 4, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.fillStyle = '#4c3a1e'; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2); ctx.fill();
+      break;
+    }
+    case 'nestbed': {
+      ctx.fillStyle = '#8a6a3a';
+      ctx.beginPath(); ctx.ellipse(x, y, 46, 12, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#c9a06a';
+      ctx.beginPath(); ctx.ellipse(x, y - 4, 40, 8, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#eec37a';
+      ctx.beginPath(); ctx.ellipse(x, y - 10, 22, 6, 0, 0, Math.PI*2); ctx.fill();
+      break;
+    }
+    case 'water-basin': {
+      ctx.fillStyle = '#5a4030';
+      ctx.beginPath(); ctx.ellipse(x, y, 36, 10, 0, 0, Math.PI*2); ctx.fill();
+      const t = state.time;
+      ctx.fillStyle = '#9ee7ff';
+      ctx.beginPath(); ctx.ellipse(x, y - 4, 30, 6, 0, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(x - 20, y - 5 + Math.sin(t*2)*0.5);
+      ctx.lineTo(x + 20, y - 5 + Math.sin(t*2 + 1.2)*0.5);
+      ctx.stroke();
+      break;
+    }
+    case 'signpost': {
+      ctx.fillStyle = '#5a3d24';
+      ctx.fillRect(x - 2, y - 40, 4, 40);
+      ctx.fillStyle = '#8a6a3a';
+      ctx.fillRect(x - 46, y - 44, 92, 24);
+      ctx.fillStyle = '#e8f2e6';
+      ctx.font = '11px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.text || '', x, y - 28);
+      break;
+    }
+    case 'bridge': {
+      ctx.fillStyle = '#7a5a3a';
+      for (let i = 0; i < d.w; i += 14) {
+        ctx.fillRect(x + i, y - 6, 10, 8);
+      }
+      ctx.strokeStyle = '#4a3020';
+      ctx.beginPath();
+      ctx.moveTo(x, y - 2);
+      ctx.quadraticCurveTo(x + d.w/2, y + 20, x + d.w, y - 2);
+      ctx.stroke();
+      break;
+    }
+    case 'pillar': {
+      const h = 720;
+      ctx.fillStyle = '#3a4a48';
+      ctx.fillRect(x - 16, y - h, 32, h);
+      ctx.fillStyle = '#556968';
+      ctx.fillRect(x - 20, y - h, 40, 14);
+      ctx.fillRect(x - 20, y - 14, 40, 14);
+      // Runes
+      ctx.fillStyle = 'rgba(158,231,255,0.4)';
+      for (let i = 0; i < 8; i++) {
+        ctx.fillRect(x - 4, y - h + 40 + i*24, 2, 8);
+      }
+      break;
+    }
+    case 'brazier': {
+      ctx.fillStyle = '#3a2820';
+      ctx.fillRect(x - 10, y - 8, 20, 12);
+      const flick = 1 + 0.3 * Math.sin(state.time * 10 + d.x);
+      const g = ctx.createRadialGradient(x, y - 20, 0, x, y - 20, 40);
+      g.addColorStop(0, 'rgba(255,180,80,0.9)');
+      g.addColorStop(1, 'rgba(255,120,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y - 20, 40 * flick, 0, Math.PI*2); ctx.fill();
+      // flame tip
+      ctx.fillStyle = '#ffcf5a';
+      ctx.beginPath();
+      ctx.moveTo(x - 6, y - 12);
+      ctx.quadraticCurveTo(x, y - 32 * flick, x + 6, y - 12);
+      ctx.fill();
+      break;
+    }
+    case 'mural': {
+      ctx.fillStyle = '#243a38';
+      ctx.fillRect(x, y, d.w, d.h);
+      ctx.fillStyle = '#4a6a68';
+      ctx.fillRect(x + 6, y + 6, d.w - 12, d.h - 12);
+      // A stylized tree with roots — the mural tells the truth
+      ctx.strokeStyle = '#c4e17f'; ctx.lineWidth = 2;
+      const cx = x + d.w/2, cy = y + d.h/2;
+      ctx.beginPath(); ctx.moveTo(cx, cy - 40); ctx.lineTo(cx, cy + 40); ctx.stroke();
+      // Canopy
+      ctx.beginPath(); ctx.arc(cx, cy - 40, 24, 0, Math.PI*2); ctx.stroke();
+      // Roots going down
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + 40);
+      ctx.lineTo(cx - 20, cy + 70);
+      ctx.moveTo(cx, cy + 40);
+      ctx.lineTo(cx + 20, cy + 70);
+      ctx.moveTo(cx, cy + 40);
+      ctx.lineTo(cx, cy + 78);
+      ctx.stroke();
+      // Sun below
+      ctx.fillStyle = '#ffb26b';
+      ctx.beginPath(); ctx.arc(cx, cy + 82, 6, 0, Math.PI*2); ctx.fill();
+      break;
+    }
+    case 'glowmoss': {
+      const flick = 0.6 + 0.4 * Math.sin(state.time * 3 + d.x);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 60);
+      g.addColorStop(0, `rgba(158,231,255,${0.6*flick})`);
+      g.addColorStop(1, 'rgba(158,231,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, 60, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#9ee7ff';
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(i) * 10, y + Math.sin(i) * 6, 2, 0, Math.PI*2);
+        ctx.fill();
+      }
+      break;
+    }
+    case 'root-cluster': {
+      ctx.strokeStyle = '#3a2418'; ctx.lineWidth = 4;
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x + i * 60, y);
+        ctx.quadraticCurveTo(x + i * 60 + 20, y + 40, x + i * 60 + (i%2?30:-30), y + 100);
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'meadow': {
+      // Extra grass tufts along the ground
+      ctx.fillStyle = '#7ad46a';
+      for (let i = 0; i < 3800; i += 20) {
+        const px = i - camx;
+        if (px < -20 || px > W + 20) continue;
+        const h = 4 + Math.sin(i * 0.1) * 2;
+        ctx.fillRect(px, y - h, 2, h);
+      }
+      break;
+    }
+    case 'fern': {
+      ctx.strokeStyle = '#4c7a3a'; ctx.lineWidth = 2;
+      for (let i = -3; i <= 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(x + i * 6, y - 20, x + i * 14, y - 34);
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'crystal': {
+      const flick = 0.5 + 0.5 * Math.sin(state.time * 2 + d.x);
+      const g = ctx.createRadialGradient(x, y - 10, 0, x, y - 10, 40);
+      g.addColorStop(0, `rgba(196,225,127,${0.5*flick})`);
+      g.addColorStop(1, 'rgba(196,225,127,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y - 10, 40, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#dff2b7';
+      ctx.beginPath();
+      ctx.moveTo(x, y - 30);
+      ctx.lineTo(x + 10, y - 10);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x - 10, y - 10);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+  }
+}
+
+function drawVines(scn) {
+  if (!scn.vines) return;
+  const camx = state.cam.x, camy = state.cam.y;
+  for (const v of scn.vines) {
+    v.growT = Math.min(v.dur, v.growT + 1/60);
+    const grown = v.height * (v.growT / v.dur);
+    const x = v.x - camx;
+    const y0 = v.y0 - camy;
+    ctx.strokeStyle = '#4c7a3a'; ctx.lineWidth = 6;
+    ctx.beginPath();
+    for (let i = 0; i <= grown; i += 8) {
+      const wx = x + Math.sin((y0 - i) * 0.04 + state.time * 2) * 4;
+      if (i === 0) ctx.moveTo(wx, y0);
+      else ctx.lineTo(wx, y0 - i);
+    }
+    ctx.stroke();
+    // Leaves
+    for (let i = 20; i <= grown; i += 30) {
+      const wx = x + Math.sin((y0 - i) * 0.04 + state.time * 2) * 4;
+      ctx.fillStyle = '#7ad46a';
+      ctx.beginPath();
+      ctx.ellipse(wx + 8, y0 - i, 8, 4, 0.3, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(wx - 8, y0 - i, 8, 4, -0.3, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawPickup(pu) {
+  const def = PICKUPS[pu.kind];
+  const x = pu.x - state.cam.x;
+  const y = pu.y - state.cam.y + Math.sin(state.time * 3 + pu.x) * 3;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 20);
+  g.addColorStop(0, def.glow + '99');
+  g.addColorStop(1, def.glow + '00');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = def.color;
+  if (pu.kind === 'sunfruit') {
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#4c7a3a';
+    ctx.fillRect(x - 1, y - 8, 2, 4);
+  } else if (pu.kind === 'silver-nut') {
+    ctx.beginPath(); ctx.ellipse(x, y, 5, 7, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#6a7a90';
+    ctx.beginPath(); ctx.arc(x, y - 5, 2, 0, Math.PI*2); ctx.fill();
+  } else if (pu.kind === 'seed') {
+    ctx.beginPath(); ctx.ellipse(x, y, 4, 6, 0.3, 0, Math.PI*2); ctx.fill();
+  } else if (pu.kind === 'ember') {
+    ctx.beginPath();
+    ctx.moveTo(x, y - 8);
+    ctx.quadraticCurveTo(x + 6, y, x, y + 6);
+    ctx.quadraticCurveTo(x - 6, y, x, y - 8);
+    ctx.fill();
+  }
+}
+
+function drawSoilPatch(sp) {
+  if (sp.used) return;
+  const x = sp.x - state.cam.x;
+  const y = sp.y - state.cam.y;
+  ctx.fillStyle = '#3a2416';
+  ctx.beginPath(); ctx.ellipse(x, y, 22, 6, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#7ad46a';
+  ctx.beginPath();
+  ctx.moveTo(x - 3, y);
+  ctx.lineTo(x, y - 10);
+  ctx.lineTo(x + 3, y);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(196,225,127,0.6)';
+  ctx.setLineDash([2,3]);
+  ctx.beginPath(); ctx.arc(x, y - 6, 14, 0, Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawProp(pr) {
+  const x = pr.x - state.cam.x;
+  const y = pr.y - state.cam.y;
+  ctx.save();
+  if (pr.held) {
+    // Glow ring
+    const g = ctx.createRadialGradient(x + pr.w/2, y + pr.h/2, 0, x + pr.w/2, y + pr.h/2, 40);
+    g.addColorStop(0, 'rgba(196,225,127,0.5)');
+    g.addColorStop(1, 'rgba(196,225,127,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x + pr.w/2, y + pr.h/2, 40, 0, Math.PI*2); ctx.fill();
+  }
+  if (pr.kind === 'crate') {
+    ctx.fillStyle = '#6a4a2e';
+    ctx.fillRect(x, y, pr.w, pr.h);
+    ctx.strokeStyle = '#3a2418'; ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, pr.w - 2, pr.h - 2);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + pr.w, y + pr.h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + pr.w, y); ctx.lineTo(x, y + pr.h); ctx.stroke();
+  } else if (pr.kind === 'slab') {
+    ctx.fillStyle = '#6a6455';
+    ctx.fillRect(x, y, pr.w, pr.h);
+    ctx.fillStyle = '#a8a292';
+    ctx.fillRect(x, y, pr.w, 3);
+  }
+  ctx.restore();
+}
+
+function drawNPC(npc) {
+  const x = npc.x - state.cam.x;
+  const y = npc.y - state.cam.y;
+  const t = state.time;
+  ctx.save();
+  const walking = npc.patrol;
+  const bob = walking ? Math.sin(t * 5) * 1 : 0;
+  const colors = {
+    elder:   { robe: '#8a6a3a', trim: '#c4e17f' },
+    child:   { robe: '#ff9aa2', trim: '#c4e17f' },
+    watcher: { robe: '#3a4a48', trim: '#9ee7ff' },
+    keeper:  { robe: '#4a3a6a', trim: '#c4e17f' },
+    stranger:{ robe: '#c4e17f', trim: '#ffcf5a' },
+  };
+  const col = colors[npc.kind] || colors.child;
+  // Robe
+  ctx.fillStyle = col.robe;
+  ctx.beginPath();
+  ctx.moveTo(x - 12, y);
+  ctx.lineTo(x - 14, y - 30);
+  ctx.lineTo(x + 14, y - 30);
+  ctx.lineTo(x + 12, y);
+  ctx.closePath();
+  ctx.fill();
+  // Trim
+  ctx.fillStyle = col.trim;
+  ctx.fillRect(x - 14, y - 30, 28, 3);
+  ctx.fillRect(x - 12, y - 5, 24, 2);
+  // Head
+  ctx.fillStyle = '#e8caa8';
+  ctx.beginPath(); ctx.arc(x, y - 40 + bob, 8, 0, Math.PI*2); ctx.fill();
+  // Hair
+  ctx.fillStyle = ['#3a2418','#5a3a24','#8a6a3a'][Math.floor(npc.x)%3];
+  ctx.beginPath(); ctx.arc(x, y - 43 + bob, 8, Math.PI, Math.PI*2); ctx.fill();
+  // Eyes
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x - 3, y - 40 + bob, 1.5, 2);
+  ctx.fillRect(x + 2, y - 40 + bob, 1.5, 2);
+  // Name label on hover — draw always if player is close
+  const p = state.p;
+  if (dist2(npc.x, npc.y, p.x, p.y) < 160*160) {
+    ctx.font = '11px Georgia';
+    ctx.fillStyle = 'rgba(232,242,230,0.85)';
+    ctx.textAlign = 'center';
+    ctx.fillText(npc.name, x, y - 56);
+    ctx.fillStyle = 'rgba(196,225,127,0.7)';
+    ctx.fillText('[T] speak', x, y - 66);
+  }
+  ctx.restore();
+}
+
+function drawPlayer() {
+  const p = state.p;
+  const char = CHARS[state.char];
+  const x = p.x - state.cam.x;
+  const y = p.y - state.cam.y;
+  ctx.save();
+  const bob = p.onGround ? Math.sin(p.animT * 12) * 1.2 * (Math.abs(p.vx) > 5 ? 1 : 0) : 0;
+
+  // Aura when gliding
+  if (p.gliding) {
+    const g = ctx.createRadialGradient(x, y - 18, 0, x, y - 18, 60);
+    g.addColorStop(0, 'rgba(158,231,255,0.4)');
+    g.addColorStop(1, 'rgba(158,231,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y - 18, 60, 0, Math.PI*2); ctx.fill();
+    // Glide wings
+    ctx.fillStyle = 'rgba(196,225,127,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(x - 20, y - 24, 20, 6, -0.3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + 20, y - 24, 20, 6, 0.3, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Robe (character color)
+  ctx.fillStyle = char.color;
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y);
+  ctx.lineTo(x - 12, y - 26);
+  ctx.lineTo(x + 12, y - 26);
+  ctx.lineTo(x + 10, y);
+  ctx.closePath();
+  ctx.fill();
+  // Trim / sash
+  ctx.fillStyle = char.accent;
+  ctx.fillRect(x - 12, y - 26, 24, 3);
+  ctx.fillRect(x - 10, y - 8, 20, 2);
+
+  // Head
+  ctx.fillStyle = '#e8caa8';
+  ctx.beginPath(); ctx.arc(x, y - 34 + bob, 8, 0, Math.PI*2); ctx.fill();
+  // Hair
+  ctx.fillStyle = '#3a2418';
+  ctx.beginPath(); ctx.arc(x, y - 38 + bob, 8, Math.PI, Math.PI*2); ctx.fill();
+  // Eyes (facing)
+  ctx.fillStyle = '#000';
+  const eox = p.facing * 1;
+  ctx.fillRect(x - 3 + eox, y - 34 + bob, 1.5, 2);
+  ctx.fillRect(x + 2 + eox, y - 34 + bob, 1.5, 2);
+  // Arms
+  ctx.fillStyle = char.color;
+  const armSwing = p.onGround && Math.abs(p.vx) > 5 ? Math.sin(p.animT * 10) * 4 : 0;
+  ctx.fillRect(x - 14, y - 22 + armSwing, 4, 12);
+  ctx.fillRect(x + 10, y - 22 - armSwing, 4, 12);
+  // Legs
+  const legSwing = p.onGround && Math.abs(p.vx) > 5 ? Math.sin(p.animT * 10) * 3 : 0;
+  ctx.fillStyle = '#3a2418';
+  ctx.fillRect(x - 6, y - 6 + legSwing, 4, 6);
+  ctx.fillRect(x + 2, y - 6 - legSwing, 4, 6);
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of state.particles) {
+    const a = clamp(p.life / (p.maxLife || p.life), 0, 1);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = a;
+    const x = p.x - state.cam.x, y = p.y - state.cam.y;
+    ctx.fillRect(x, y, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+  for (const f of state.floats) {
+    const a = clamp(f.life / 1.2, 0, 1);
+    ctx.globalAlpha = a;
+    ctx.font = '12px Georgia';
+    ctx.fillStyle = f.color || '#c4e17f';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.text, f.x - state.cam.x, f.y - state.cam.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawExits(scn) {
+  for (const ex of scn.exits) {
+    const x = ex.x - state.cam.x, y = ex.y - state.cam.y;
+    // Doorway hint
+    if (ex.locked && !state.p.flags['unsealed_' + ex.id]) {
+      ctx.fillStyle = 'rgba(255,120,80,0.4)';
+      ctx.fillRect(x, y, ex.w, ex.h);
+      ctx.strokeStyle = '#ffb26b';
+      ctx.strokeRect(x, y, ex.w, ex.h);
+      ctx.fillStyle = '#ffb26b';
+      ctx.font = '11px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText(ex.label, x + ex.w/2, y - 4);
+    } else {
+      ctx.fillStyle = 'rgba(196,225,127,0.15)';
+      ctx.fillRect(x, y, ex.w, ex.h);
+      ctx.strokeStyle = 'rgba(196,225,127,0.5)';
+      ctx.strokeRect(x, y, ex.w, ex.h);
+      ctx.fillStyle = 'rgba(232,242,230,0.7)';
+      ctx.font = '11px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText(ex.label, x + ex.w/2, y - 4);
+    }
+  }
+}
+
+// --------------------------- Main render ----------------------------------
+function render() {
+  const scn = scene();
+  drawSky(scn);
+
+  // Trunk behind (canopy scenes)
+  if (scn.biome === 'canopy') drawTrunk(scn);
+
+  // Decor (non-background)
+  for (const d of scn.decor) {
+    if (d.kind === 'trunk' || d.kind === 'sanctum-wall' || d.kind === 'shaft-wall' || d.kind === 'sky-below') continue;
+    drawDecor(d, scn);
+  }
+
+  // Vines
+  drawVines(scn);
+
+  // Platforms
+  for (const p of scn.platforms) drawPlatform(p, scn.biome);
+
+  // Soil patches
+  for (const sp of scn.soilPatches) drawSoilPatch(sp);
+
+  // Exits (subtle)
+  drawExits(scn);
+
+  // Pickups
+  for (const pu of scn.pickups) drawPickup(pu);
+
+  // Props
+  for (const pr of scn.props) drawProp(pr);
+
+  // NPCs
+  for (const npc of scn.npcs) drawNPC(npc);
+
+  // Player
+  drawPlayer();
+
+  // Particles / floats
+  drawParticles();
+
+  // Vignette
+  const vg = ctx.createRadialGradient(W/2, H/2, W/3, W/2, H/2, W/1.2);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// --------------------------- Menu -----------------------------------------
+function renderMenu() {
+  const m = $('#menu');
+  m.classList.remove('hidden');
+  if (state.scene === 'menu') {
+    m.innerHTML = `
+      <div class="card panel">
+        <h1>Below <span class="below">the Root</span></h1>
+        <div class="sub">Reawakened · A tribute in a new sky</div>
+        <button data-i="0">Begin</button>
+        <button data-i="1">About</button>
+        <div class="foot">Move ← → · Jump [Space] · Interact [T] · Menu [Esc]</div>
+      </div>`;
+  } else if (state.scene === 'charselect') {
+    const keys = Object.keys(CHARS);
+    m.innerHTML = `
+      <div class="card panel" style="max-width: 780px;">
+        <h1 style="font-size: 1.8em;">Choose your Dreamer</h1>
+        <div class="sub">Each gift is stronger — and weaker — than the others.</div>
+        <div id="chars">
+          ${keys.map((k, i) => {
+            const c = CHARS[k];
+            return `<div class="char" data-i="${i}">
+              <div class="name">${c.name}</div>
+              <div class="role">${c.role}</div>
+              <div class="stats">
+                <div class="stat"><span>Mindtouch</span><span class="val">${'◈'.repeat(c.mindtouch)}${'·'.repeat(3-c.mindtouch)}</span></div>
+                <div class="stat"><span>Lift</span><span class="val">${'⇧'.repeat(c.lift)}${'·'.repeat(3-c.lift)}</span></div>
+                <div class="stat"><span>Grow</span><span class="val">${'❦'.repeat(c.grow)}${'·'.repeat(3-c.grow)}</span></div>
+                <div class="stat"><span>Glide</span><span class="val">${'❋'.repeat(c.glide)}${'·'.repeat(3-c.glide)}</span></div>
+              </div>
+              <div style="margin-top:8px;color:var(--dim);font-size:.8em;font-style:italic;">${c.intro}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="foot" style="margin-top:20px;">↑↓←→ to browse · Enter to choose</div>
+      </div>`;
+  } else if (state.scene === 'about') {
+    m.innerHTML = `
+      <div class="card panel" style="max-width: 700px; text-align: left;">
+        <h1 style="font-size: 1.6em; text-align:center;">About</h1>
+        <div class="sub" style="text-align:center;">A love letter to a small green world.</div>
+        <p style="line-height:1.6;">
+          High in the branches of a colossal tree, a peaceful people live in the sunlight. They believe the ground far below is death — a place of monsters, guarded by a warden's seal. But a dream has begun to visit the young, and the seal is thinner than anyone was told.
+        </p>
+        <p style="line-height:1.6;">
+          This is a spiritual successor to a 1984 adventure — reimagined with new characters, new writing, and new mechanics, but the same quiet question: what happens when you look at the thing you were told never to look at?
+        </p>
+        <p style="line-height:1.6; color: var(--dim);">
+          Move: ← → · Jump: Space · Speak: T · Mindtouch: Q · Lift: E · Grow: R · Glide: F (hold in air)
+        </p>
+        <button data-i="0" style="margin-top: 20px;">Back</button>
+      </div>`;
+  } else if (state.scene === 'ending') {
+    const e = ENDINGS[state.ending] || ENDINGS.balance;
+    m.innerHTML = `
+      <div class="card panel" style="max-width: 700px; text-align:left;">
+        <h1 style="font-size: 1.8em; text-align:center;">${e.title}</h1>
+        <div class="sub" style="text-align:center;">${CHARS[state.char].name}, ${CHARS[state.char].role}</div>
+        ${e.body.map(t => `<p style="line-height:1.6;">${t}</p>`).join('')}
+        <div style="text-align:center; margin-top: 24px;">
+          <button data-i="0">Play Again</button>
+          <button data-i="1">A Different Dreamer</button>
+        </div>
+      </div>`;
+  }
+  // Focus
+  const btns = m.querySelectorAll('button, .char');
+  btns.forEach((b, i) => b.classList.toggle('focus', i === state.menuFocus));
+  btns.forEach((b, i) => {
+    b.addEventListener('click', () => menuActivate(i));
+  });
+}
+
+function menuActivate(i) {
+  ensureAudio();
+  sfx.select();
+  if (state.scene === 'menu') {
+    if (i === 0) { state.scene = 'charselect'; state.menuFocus = 0; renderMenu(); }
+    else if (i === 1) { state.scene = 'about'; state.menuFocus = 0; renderMenu(); }
+  } else if (state.scene === 'charselect') {
+    const keys = Object.keys(CHARS);
+    state.char = keys[i];
+    startGame();
+  } else if (state.scene === 'about') {
+    state.scene = 'menu'; state.menuFocus = 0; renderMenu();
+  } else if (state.scene === 'ending') {
+    if (i === 0) { startGame(); }
+    else { state.scene = 'charselect'; state.menuFocus = 0; renderMenu(); }
+  }
+}
+
+function updateMenuKeys() {
+  const m = $('#menu');
+  const items = m.querySelectorAll('button, .char');
+  if (!items.length) return;
+  const cols = state.scene === 'charselect' ? 4 : 1;
+  if (wasPressed('ArrowDown') || wasPressed('KeyS')) {
+    state.menuFocus = (state.menuFocus + cols) % items.length;
+  }
+  if (wasPressed('ArrowUp') || wasPressed('KeyW')) {
+    state.menuFocus = (state.menuFocus - cols + items.length) % items.length;
+  }
+  if (state.scene === 'charselect') {
+    if (wasPressed('ArrowRight') || wasPressed('KeyD')) state.menuFocus = (state.menuFocus + 1) % items.length;
+    if (wasPressed('ArrowLeft') || wasPressed('KeyA'))  state.menuFocus = (state.menuFocus - 1 + items.length) % items.length;
+  }
+  if (wasPressed('Enter') || wasPressed('Space')) {
+    menuActivate(state.menuFocus);
+    return;
+  }
+  items.forEach((b, i) => b.classList.toggle('focus', i === state.menuFocus));
+}
+
+function startGame() {
+  $('#menu').classList.add('hidden');
+  $('#hud').classList.add('on');
+  state.world = buildWorld();
+  state.p = {
+    x: 400, y: 600, vx: 0, vy: 0,
+    w: 22, h: 34,
+    facing: 1,
+    onGround: false,
+    gliding: false,
+    animT: 0,
+    spirit: 100, spiritMax: 100,
+    vit: 100, vitMax: 100,
+    inv: {},
+    flags: {},
+    lifting: null,
+    dt: 1/60,
+  };
+  state.cur = 'grove';
+  state.questIdx = 0;
+  state.particles.length = 0;
+  state.floats.length = 0;
+  state.time = 0;
+  state.dayT = 0.22;
+  state.cam.x = 0; state.cam.y = 0;
+  state.scene = 'playing';
+  banner('Sunleaf Grove', 'You wake in the crown of the tree.');
+  updateHUD();
+  // Intro dialog
+  openDialog(pickIntro(state.char));
+}
+
+function endGame() {
+  fadeTo(() => {
+    state.scene = 'ending';
+    state.menuFocus = 0;
+    $('#dialogue').classList.remove('on');
+    $('#hud').classList.remove('on');
+    $('#quest').classList.remove('on');
+    renderMenu();
+  });
+}
+
+// --------------------------- Main loop ------------------------------------
+let lastT = 0;
+function frame(now) {
+  const t = now / 1000;
+  let dt = Math.min(0.05, t - (lastT || t));
+  lastT = t;
+  state.time += dt;
+
+  // Slow day cycle
+  state.dayT = (state.dayT + dt * 0.008) % 1;
+
+  if (state.scene === 'playing') {
+    updatePlayer(dt);
+    updateNPCs(dt);
+    updateParticles(dt);
+    updateCamera(dt);
+    render();
+    updateHUD();
+  } else if (state.scene === 'dialog') {
+    // World continues to animate (particles) but player pauses
+    updateNPCs(dt);
+    updateParticles(dt);
+    render();
+    tickDialog(dt);
+  } else {
+    // Menu screens — draw a light animated bg on canvas
+    drawMenuBackdrop();
+    updateMenuKeys();
+  }
+
+  pressed.clear();
+  released.clear();
+  requestAnimationFrame(frame);
+}
+
+function drawMenuBackdrop() {
+  // Soft breathing sky
+  const s = skyGradient();
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, s.top);
+  g.addColorStop(1, s.bot);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  // Floating leaves
+  for (let i = 0; i < 40; i++) {
+    const t = state.time * 0.4 + i * 3.1;
+    const x = (i * 137 + Math.sin(t) * 80) % (W + 40);
+    const y = (i * 71 + state.time * 20 + Math.cos(t) * 30) % (H + 40);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(t) * 0.4);
+    ctx.fillStyle = 'rgba(196, 225, 127, 0.55)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 6, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  // A silhouette tree
+  const bx = W * 0.5;
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = '#2a3d2a';
+  ctx.beginPath();
+  ctx.moveTo(bx - 20, H);
+  ctx.lineTo(bx - 10, 300);
+  ctx.lineTo(bx + 10, 300);
+  ctx.lineTo(bx + 20, H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(bx, 240, 140, 0, Math.PI*2);
+  ctx.arc(bx - 100, 280, 90, 0, Math.PI*2);
+  ctx.arc(bx + 100, 280, 90, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// --------------------------- Global keys ----------------------------------
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape') {
+    if (state.scene === 'playing') {
+      state.scene = 'menu'; state.menuFocus = 0;
+      $('#hud').classList.remove('on');
+      $('#quest').classList.remove('on');
+      renderMenu();
+    } else if (state.scene === 'menu') {
+      $('#menu').classList.add('hidden');
+      state.scene = 'playing';
+      $('#hud').classList.add('on');
+    }
+  }
+});
+
+// --------------------------- Boot -----------------------------------------
+function boot() {
+  updateHUD();
+  renderMenu();
+  requestAnimationFrame((t) => { lastT = t / 1000; frame(t); });
+}
+boot();
+</script>
+</body>
+</html>
