@@ -277,6 +277,125 @@
     transition: opacity 700ms ease;
   }
   .fade.on { opacity: 1; }
+  #pause, #journal {
+    position: absolute; inset: 0;
+    display: none;
+    place-items: center;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(2px);
+    pointer-events: auto;
+    z-index: 10;
+  }
+  #pause.on, #journal.on { display: grid; }
+  #pause .card, #journal .card {
+    padding: 26px 36px;
+    text-align: center;
+    max-width: 640px;
+    min-width: 320px;
+  }
+  #pause h2, #journal h2 {
+    margin: 0 0 12px;
+    font-weight: normal;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    font-size: 1.4em;
+  }
+  #pause button {
+    display: block; margin: 6px auto;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid rgba(200,220,180,0.35);
+    padding: 8px 24px;
+    font-family: inherit;
+    font-size: 1em;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    min-width: 240px;
+  }
+  #pause button:hover, #pause button.focus {
+    background: rgba(196,225,127,0.08);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  #pause .vol {
+    margin: 18px auto 6px;
+    display: flex; align-items: center; gap: 12px;
+    justify-content: center;
+    font-size: 0.9em;
+    color: var(--dim);
+    letter-spacing: 0.06em;
+  }
+  #pause .vol input {
+    -webkit-appearance: none;
+    width: 160px; height: 4px;
+    background: rgba(200,220,180,0.25);
+    border-radius: 4px; outline: none;
+  }
+  #pause .vol input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  #journal .card {
+    max-width: 780px; text-align: left;
+    max-height: 82%;
+    overflow-y: auto;
+  }
+  #journal .row { display: flex; gap: 24px; margin: 8px 0; align-items: baseline; }
+  #journal .col-l { min-width: 120px; color: var(--dim); letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.8em; }
+  #journal .col-r { flex: 1; }
+  #journal ul { margin: 0; padding-left: 18px; line-height: 1.7; }
+  #journal li.done { color: var(--dim); text-decoration: line-through; }
+  #journal li.current { color: var(--accent); font-weight: bold; }
+  #journal .map {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+  }
+  #journal .map .cell {
+    padding: 8px 6px;
+    border: 1px dashed rgba(200,220,180,0.2);
+    border-radius: 4px;
+    text-align: center;
+    font-size: 0.8em;
+    color: var(--dim);
+    letter-spacing: 0.06em;
+  }
+  #journal .map .cell.visited {
+    border-color: rgba(196,225,127,0.4);
+    color: var(--ink);
+    background: rgba(196,225,127,0.05);
+  }
+  #journal .map .cell.here {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(196,225,127,0.15);
+    box-shadow: 0 0 12px rgba(196,225,127,0.35);
+  }
+  #journal .close-hint {
+    color: var(--dim); font-size: 0.8em;
+    text-align: center;
+    margin-top: 14px;
+    letter-spacing: 0.1em;
+  }
+  #interact-hint {
+    position: absolute;
+    left: 50%; bottom: 22%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
+    color: var(--accent);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85em;
+    letter-spacing: 0.08em;
+    opacity: 0;
+    transition: opacity 150ms;
+    pointer-events: none;
+    border: 1px solid rgba(196,225,127,0.4);
+  }
+  #interact-hint.on { opacity: 1; }
 </style>
 </head>
 <body>
@@ -312,8 +431,11 @@
         <div class="hint">Space/Enter to continue &middot; ↑↓ to select</div>
       </div>
       <div id="banner"><span class="text"></span><span class="sub"></span></div>
+      <div id="interact-hint"></div>
+      <div id="pause"></div>
+      <div id="journal"></div>
       <div id="menu"></div>
-      <div id="controls-hint">← → move · Space jump · Q mindtouch · E lift · R grow · F glide · Tab map · Esc menu</div>
+      <div id="controls-hint">← → move · Space jump · T speak · Q mindtouch · E lift · R grow · F glide · Tab journal · M mute · Esc pause</div>
       <div id="fade" class="fade"></div>
     </div>
   </div>
@@ -362,15 +484,25 @@ const wasPressed = (c) => pressed.has(c);
 
 // --------------------------- Audio ----------------------------------------
 let audioCtx = null;
+let masterGain = null;
+let audioSettings = { volume: 0.8, muted: false };
 function ensureAudio() {
   if (!audioCtx) {
-    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-    catch (e) { audioCtx = null; }
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = audioSettings.muted ? 0 : audioSettings.volume;
+      masterGain.connect(audioCtx.destination);
+    } catch (e) { audioCtx = null; }
   }
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 }
+function applyVolume() {
+  if (!masterGain) return;
+  masterGain.gain.value = audioSettings.muted ? 0 : audioSettings.volume;
+}
 function tone(freq, dur = 0.12, type = 'sine', gain = 0.08, sweep = 0) {
-  if (!audioCtx) return;
+  if (!audioCtx || !masterGain) return;
   const t = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
   const g = audioCtx.createGain();
@@ -380,7 +512,7 @@ function tone(freq, dur = 0.12, type = 'sine', gain = 0.08, sweep = 0) {
   g.gain.setValueAtTime(0, t);
   g.gain.linearRampToValueAtTime(gain, t + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  osc.connect(g); g.connect(audioCtx.destination);
+  osc.connect(g); g.connect(masterGain);
   osc.start(t); osc.stop(t + dur + 0.02);
 }
 const sfx = {
@@ -739,7 +871,6 @@ function buildWorld() {
     ],
     exits: [
       { x: 0, y: 620, w: 40, h: 80, to: 'shaft', spawn: { x: 560, y: 2020 }, label: '↑ Ascent' },
-      { id: 'meet', x: 3720, y: 620, w: 40, h: 80, to: 'ending', spawn: { x: 0, y: 0 }, label: '→ Onward' },
     ],
   });
 
@@ -792,10 +923,29 @@ const DIALOG = {
   // NPC ID -> function returning a dialog list, so it can be dynamic
   elder(char) {
     const c = CHARS[char];
-    if (state.p.flags.spoken_elder && state.questIdx >= 2) {
-      return [
-        { speaker: 'Elder Milaen', text: `The Watcher on the Great Branch will know if the old signs are true. Go and ask.` },
-      ];
+    const q = state.questIdx;
+    if (state.p.flags.spoken_elder) {
+      if (q === 1) {
+        const have = state.p.inv['sunfruit'] || 0;
+        return [
+          { speaker: 'Elder Milaen', text: `You have ${have} of the three sunfruit. The last one grows further out on the Great Branch — the eastern door is at the far end of the grove.` },
+        ];
+      }
+      if (q === 2) {
+        return [
+          { speaker: 'Elder Milaen', text: `The Watcher paces the pillars on the Great Branch. If he will not answer plainly, listen underneath his words.` },
+        ];
+      }
+      if (q === 3 || q === 4) {
+        return [
+          { speaker: 'Elder Milaen', text: `You have been to the Sanctum. I see it in you. Whatever the Keeper told you, hold it lightly for now.` },
+        ];
+      }
+      if (q >= 5) {
+        return [
+          { speaker: 'Elder Milaen', text: `A wind has changed. When you come home, come home carefully.` },
+        ];
+      }
     }
     return [
       { speaker: 'Elder Milaen', text: `Good rising, ${c.name}. You are late — the dew has already lifted from the ferns.` },
@@ -808,17 +958,32 @@ const DIALOG = {
     ];
   },
   child(char) {
+    if (state.p.flags.spoken_child && state.questIdx >= 4) {
+      return [
+        { speaker: 'Little Iris', text: `You have that look. Like the older ones do when the wind has told them something.` },
+      ];
+    }
+    if (state.p.flags.spoken_child) {
+      return [
+        { speaker: 'Little Iris', text: `I asked the vines again. They said hello. I think they know you.` },
+      ];
+    }
     return [
       { speaker: 'Little Iris', text: `Look what I made! Vines, three of them, and I only asked twice.`, choices: [
         { text: `That's wonderful.`, next: 1 },
         { text: `Are you frightened of the wardens?`, next: 2 },
       ] },
-      { speaker: 'Little Iris', text: `Elder says one day I'll grow whole ladders. Then I'll climb down to the roots and see the truth for myself.`, end: true },
-      { speaker: 'Little Iris', text: `A little. But the roots don't feel frightening. They feel like something waiting.`, end: true },
+      { speaker: 'Little Iris', text: `Elder says one day I'll grow whole ladders. Then I'll climb down to the roots and see the truth for myself.`, action: () => { state.p.flags.spoken_child = true; }, end: true },
+      { speaker: 'Little Iris', text: `A little. But the roots don't feel frightening. They feel like something waiting.`, action: () => { state.p.flags.spoken_child = true; }, end: true },
     ];
   },
   watcher(char) {
     const canMindtouch = CHARS[char].mindtouch >= 2;
+    if (state.questIdx >= 3) {
+      return [
+        { speaker: 'Watcher Sulmen', text: `You spoke with Ohsann. I can see it in how you stand. Say nothing to the others.` },
+      ];
+    }
     return [
       { speaker: 'Watcher Sulmen', text: `Move on, child. The sanctum is closed today. Ceremony business.` },
       { speaker: 'Watcher Sulmen', text: `There is nothing to see and less to say. Return to your grove.`, choices: [
@@ -838,6 +1003,16 @@ const DIALOG = {
   keeper(char) {
     const canMindtouch = CHARS[char].mindtouch >= 2;
     const canGrow = CHARS[char].grow >= 2;
+    if (state.questIdx >= 5) {
+      return [
+        { speaker: 'Keeper Ohsann', text: `You went through. I have been sitting here, half-hoping and half-afraid, ever since. Tell me what you saw when you come back up.` },
+      ];
+    }
+    if (state.questIdx === 4) {
+      return [
+        { speaker: 'Keeper Ohsann', text: `The soil-patch beneath the seal will listen if you ask it. A vine will do what a warden's hand will not.` },
+      ];
+    }
     return [
       { speaker: 'Keeper Ohsann', text: `${CHARS[char].name}. You should not be here. The sanctum is under seal.` },
       { speaker: 'Keeper Ohsann', text: `A dream has passed among the young. Sit, and I will speak plainly — as much as I can.`, choices: [
@@ -994,6 +1169,7 @@ function advanceQuest(id) {
       sfx.reveal();
     }
     updateHUD();
+    saveGame();
   }
 }
 
@@ -1199,7 +1375,7 @@ function updatePlayer(dt) {
     }
   }
 
-  // Interactions: NPCs — press T when near
+  // Interactions: NPCs / water basin — press T when near
   if (wasPressed('KeyT') || wasPressed('Enter')) {
     let best = null, bd = 60*60;
     for (const npc of scn.npcs) {
@@ -1210,8 +1386,25 @@ function updatePlayer(dt) {
       const nodes = DIALOG[best.kind] ? DIALOG[best.kind](state.char) : [{ speaker: best.name, text: '...' }];
       openDialog(nodes);
     } else {
-      // Also try soil patches for grow
-      // fallthrough
+      // Water basin
+      for (const d of scn.decor) {
+        if (d.kind === 'water-basin' && dist2(d.x, d.y, p.x, p.y - p.h/2) < 60*60) {
+          const before = p.vit;
+          p.vit = Math.min(p.vitMax, p.vit + 30);
+          p.spirit = Math.min(p.spiritMax, p.spirit + 12);
+          spawnFloat(d.x, d.y - 20, '+ refreshed', '#9ee7ff');
+          for (let i = 0; i < 12; i++) {
+            state.particles.push({
+              x: d.x + rand(-14,14), y: d.y - 4,
+              vx: rand(-30,30), vy: rand(-80,-20),
+              life: 0.8, maxLife: 0.8, color: '#9ee7ff', size: 2,
+            });
+          }
+          sfx.pickup();
+          toast(before < p.vitMax ? 'You drink from the basin.' : 'The water is cool. You are already full.');
+          break;
+        }
+      }
     }
   }
 
@@ -1301,9 +1494,26 @@ function updatePlayer(dt) {
         state.cam.x = clamp(p.x - W/2, 0, scene().w - W);
         state.cam.y = clamp(p.y - H/2, 0, scene().h - H);
         banner(scene().title, '', 1800);
-        // quest triggers
+        // Track visited scenes for the journal map
+        p.flags.visited = p.flags.visited || {};
+        p.flags.visited[to] = true;
+        // First-time tutorial hints per scene
+        if (to === 'greatbranch') tutorial('t-jump', 'Try higher jumps', 'Hold Space or step through cross-branches.');
+        if (to === 'sanctum') {
+          const c = CHARS[state.char];
+          if (c.mindtouch >= 2) tutorial('t-mt', 'Try mindtouch [Q]', 'Some minds hide what their mouths will not.');
+          else tutorial('t-grow', 'Try grow [R]', 'A soil-patch will listen if you stand close.');
+        }
+        if (to === 'shaft') {
+          const c = CHARS[state.char];
+          if (c.glide >= 2) tutorial('t-glide', 'Hold [F] to glide', 'Kaelin\'s wings carry the least breath.');
+          else tutorial('t-fall', 'Fall carefully', 'Aim for the ledges below.');
+        }
+        if (to === 'below') tutorial('t-below', 'You are below the root.', 'Someone waits at the meadow.');
+        // Quest triggers
         if (to === 'shaft') advanceQuest('unseal');
         if (to === 'below') advanceQuest('descend');
+        saveGame();
       });
       return;
     }
@@ -2220,13 +2430,15 @@ function renderMenu() {
   const m = $('#menu');
   m.classList.remove('hidden');
   if (state.scene === 'menu') {
+    const cont = hasSave();
     m.innerHTML = `
       <div class="card panel">
         <h1>Below <span class="below">the Root</span></h1>
         <div class="sub">Reawakened · A tribute in a new sky</div>
-        <button data-i="0">Begin</button>
-        <button data-i="1">About</button>
-        <div class="foot">Move ← → · Jump [Space] · Interact [T] · Menu [Esc]</div>
+        ${cont ? '<button data-i="0">Continue</button>' : ''}
+        <button data-i="${cont ? 1 : 0}">${cont ? 'New Dream' : 'Begin'}</button>
+        <button data-i="${cont ? 2 : 1}">About</button>
+        <div class="foot">Move ← → · Jump [Space] · Interact [T] · Journal [Tab] · Pause [Esc]</div>
       </div>`;
   } else if (state.scene === 'charselect') {
     const keys = Object.keys(CHARS);
@@ -2293,8 +2505,25 @@ function menuActivate(i) {
   ensureAudio();
   sfx.select();
   if (state.scene === 'menu') {
-    if (i === 0) { state.scene = 'charselect'; state.menuFocus = 0; renderMenu(); }
-    else if (i === 1) { state.scene = 'about'; state.menuFocus = 0; renderMenu(); }
+    const cont = hasSave();
+    const acts = cont ? ['continue', 'new', 'about'] : ['new', 'about'];
+    const a = acts[i];
+    if (a === 'continue') {
+      if (loadGame()) {
+        $('#menu').classList.add('hidden');
+        $('#hud').classList.add('on');
+        state.scene = 'playing';
+        banner(scene().title, 'The path continues.', 1800);
+        updateHUD();
+      } else {
+        toast('Save could not be read.');
+      }
+    } else if (a === 'new') {
+      clearSave();
+      state.scene = 'charselect'; state.menuFocus = 0; renderMenu();
+    } else if (a === 'about') {
+      state.scene = 'about'; state.menuFocus = 0; renderMenu();
+    }
   } else if (state.scene === 'charselect') {
     const keys = Object.keys(CHARS);
     state.char = keys[i];
@@ -2302,8 +2531,8 @@ function menuActivate(i) {
   } else if (state.scene === 'about') {
     state.scene = 'menu'; state.menuFocus = 0; renderMenu();
   } else if (state.scene === 'ending') {
-    if (i === 0) { startGame(); }
-    else { state.scene = 'charselect'; state.menuFocus = 0; renderMenu(); }
+    if (i === 0) { clearSave(); startGame(); }
+    else { clearSave(); state.scene = 'charselect'; state.menuFocus = 0; renderMenu(); }
   }
 }
 
@@ -2372,6 +2601,216 @@ function endGame() {
   });
 }
 
+// --------------------------- Save / Load ----------------------------------
+const SAVE_KEY = 'below-root-save-v1';
+function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
+function saveGame() {
+  if (!state.world || !state.char) return;
+  try {
+    const scenesState = {};
+    for (const [k, scn] of Object.entries(state.world.scenes)) {
+      scenesState[k] = {
+        pickups: scn.pickups.map(p => p.kind + ':' + Math.round(p.x) + ':' + Math.round(p.y)),
+        soilUsed: scn.soilPatches.filter(sp => sp.used).map(sp => sp.id),
+      };
+    }
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v: 1,
+      char: state.char,
+      questIdx: state.questIdx,
+      cur: state.cur,
+      dayT: state.dayT,
+      player: {
+        x: state.p.x, y: state.p.y,
+        spirit: state.p.spirit, vit: state.p.vit,
+        inv: state.p.inv, flags: state.p.flags,
+      },
+      scenes: scenesState,
+      audio: audioSettings,
+      ts: Date.now(),
+    }));
+  } catch (e) {}
+}
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data.char || !CHARS[data.char]) return false;
+    state.char = data.char;
+    state.world = buildWorld();
+    state.questIdx = data.questIdx || 0;
+    state.cur = data.cur || 'grove';
+    state.dayT = data.dayT || 0.22;
+    if (data.audio) { audioSettings = data.audio; applyVolume(); }
+    state.p = {
+      x: data.player.x, y: data.player.y, vx: 0, vy: 0,
+      w: 22, h: 34, facing: 1, onGround: false, gliding: false, animT: 0,
+      spirit: data.player.spirit, spiritMax: 100,
+      vit: data.player.vit, vitMax: 100,
+      inv: data.player.inv || {}, flags: data.player.flags || {},
+      lifting: null, dt: 1/60,
+    };
+    for (const [k, snap] of Object.entries(data.scenes || {})) {
+      const scn = state.world.scenes[k];
+      if (!scn) continue;
+      const remaining = new Set(snap.pickups || []);
+      scn.pickups = scn.pickups.filter(p => remaining.has(p.kind + ':' + Math.round(p.x) + ':' + Math.round(p.y)));
+      const usedSet = new Set(snap.soilUsed || []);
+      scn.vines = scn.vines || [];
+      for (const sp of scn.soilPatches) {
+        if (usedSet.has(sp.id)) {
+          sp.used = true;
+          scn.vines.push({ x: sp.x, y0: sp.y, height: 300, growT: 1.2, dur: 1.2 });
+          scn.platforms.push({ x: sp.x - 40, y: sp.y - 300, w: 80, h: 12, kind: 'vine-top' });
+          if (sp.id === 'sanc-soil-1') {
+            for (const ex of scn.exits) if (ex.id === 'seal') { ex.locked = false; state.p.flags['unsealed_seal'] = true; }
+          }
+        }
+      }
+    }
+    state.cam.x = clamp(state.p.x - W/2, 0, scene().w - W);
+    state.cam.y = clamp(state.p.y - H/2, 0, scene().h - H);
+    return true;
+  } catch (e) { console.error(e); return false; }
+}
+function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+// --------------------------- Pause overlay --------------------------------
+function openPause() {
+  if (state.scene !== 'playing' && state.scene !== 'dialog') return;
+  state._prevScene = state.scene;
+  state.scene = 'pause';
+  renderPause();
+}
+function closePause() {
+  $('#pause').classList.remove('on');
+  state.scene = state._prevScene || 'playing';
+  state._prevScene = null;
+}
+function renderPause() {
+  const p = $('#pause');
+  const vol = Math.round(audioSettings.volume * 100);
+  p.innerHTML = `
+    <div class="card panel">
+      <h2>Paused</h2>
+      <button data-a="resume">Resume</button>
+      <button data-a="save">Save Progress</button>
+      <button data-a="title">Save &amp; Quit to Title</button>
+      <div class="vol">
+        <span>Volume</span>
+        <input type="range" min="0" max="100" value="${vol}" data-a="volume" />
+        <span>${audioSettings.muted ? 'muted' : ''}</span>
+      </div>
+      <div style="margin-top:14px; color:var(--dim); font-size:0.8em; letter-spacing:0.1em;">Esc to resume · M to mute</div>
+    </div>`;
+  p.classList.add('on');
+  p.querySelectorAll('button').forEach(b => b.addEventListener('click', () => pauseAction(b.dataset.a)));
+  p.querySelector('input[data-a="volume"]').addEventListener('input', (e) => {
+    audioSettings.volume = parseInt(e.target.value, 10) / 100;
+    audioSettings.muted = false;
+    applyVolume();
+  });
+}
+function pauseAction(a) {
+  ensureAudio(); sfx.select();
+  if (a === 'resume') closePause();
+  else if (a === 'save') { saveGame(); toast('Saved.'); }
+  else if (a === 'title') {
+    saveGame();
+    fadeTo(() => {
+      state.scene = 'menu'; state.menuFocus = 0;
+      $('#pause').classList.remove('on');
+      $('#hud').classList.remove('on');
+      $('#quest').classList.remove('on');
+      $('#dialogue').classList.remove('on');
+      renderMenu();
+    });
+  }
+}
+
+// --------------------------- Journal overlay ------------------------------
+function toggleJournal() {
+  if (state.scene === 'journal') {
+    $('#journal').classList.remove('on');
+    state.scene = state._prevScene || 'playing';
+    state._prevScene = null;
+    return;
+  }
+  if (state.scene !== 'playing' && state.scene !== 'dialog') return;
+  state._prevScene = state.scene;
+  state.scene = 'journal';
+  renderJournal();
+}
+function renderJournal() {
+  const j = $('#journal');
+  const inv = state.p.inv;
+  const invLines = Object.entries(inv).map(([k, n]) => {
+    const def = PICKUPS[k];
+    return `<li>${n}× ${def ? def.label : k}</li>`;
+  }).join('') || '<li style="color:var(--dim)">Nothing yet.</li>';
+  const questList = QUESTS.map((q, i) => {
+    const cls = i < state.questIdx ? 'done' : (i === state.questIdx ? 'current' : '');
+    return `<li class="${cls}">${q.goal}</li>`;
+  }).join('');
+  const sceneKeys = ['grove','greatbranch','sanctum','shaft','below'];
+  const labels = { grove:'Sunleaf Grove', greatbranch:'Great Branch', sanctum:'Old Sanctum', shaft:'Descent', below:'Below the Root' };
+  const visited = state.p.flags.visited || {};
+  const mapCells = sceneKeys.map(k => {
+    const cls = k === state.cur ? 'here' : (visited[k] ? 'visited' : '');
+    return `<div class="cell ${cls}">${labels[k]}</div>`;
+  }).join('');
+  const c = CHARS[state.char];
+  j.innerHTML = `
+    <div class="card panel">
+      <h2>Journal</h2>
+      <div class="row"><div class="col-l">Dreamer</div><div class="col-r">${c.name} — ${c.role}</div></div>
+      <div class="row"><div class="col-l">Path</div><div class="col-r"><ul>${questList}</ul></div></div>
+      <div class="row"><div class="col-l">Carrying</div><div class="col-r"><ul>${invLines}</ul></div></div>
+      <div class="row"><div class="col-l">Places</div><div class="col-r"><div class="map">${mapCells}</div></div></div>
+      <div class="row"><div class="col-l">Gifts</div><div class="col-r">
+        <div>◈ Mindtouch — ${'★'.repeat(c.mindtouch)}${'·'.repeat(3-c.mindtouch)}</div>
+        <div>⇧ Lift — ${'★'.repeat(c.lift)}${'·'.repeat(3-c.lift)}</div>
+        <div>❦ Grow — ${'★'.repeat(c.grow)}${'·'.repeat(3-c.grow)}</div>
+        <div>❋ Glide — ${'★'.repeat(c.glide)}${'·'.repeat(3-c.glide)}</div>
+      </div></div>
+      <div class="close-hint">Tab or Esc to close</div>
+    </div>`;
+  j.classList.add('on');
+}
+
+// --------------------------- Tutorial popups ------------------------------
+function tutorial(id, text, sub) {
+  state.p.flags._tut = state.p.flags._tut || {};
+  if (state.p.flags._tut[id]) return;
+  state.p.flags._tut[id] = true;
+  banner(text, sub || '', 3200);
+}
+
+// --------------------------- Interact hint --------------------------------
+function updateInteractHint() {
+  const el = $('#interact-hint');
+  if (state.scene !== 'playing') { el.classList.remove('on'); return; }
+  const p = state.p;
+  const scn = scene();
+  let hint = '';
+  for (const npc of scn.npcs) {
+    if (dist2(npc.x, npc.y - 20, p.x, p.y - p.h/2) < 60*60) { hint = `[T] Speak with ${npc.name}`; break; }
+  }
+  if (!hint) {
+    for (const d of scn.decor) {
+      if (d.kind === 'water-basin' && dist2(d.x, d.y, p.x, p.y - p.h/2) < 60*60) { hint = '[T] Drink'; break; }
+    }
+  }
+  if (!hint) {
+    for (const sp of scn.soilPatches) {
+      if (sp.used) continue;
+      if (dist2(sp.x, sp.y, p.x, p.y) < 60*60 && CHARS[state.char].grow >= 2 && p.spirit >= 20) { hint = '[R] Grow a vine'; break; }
+    }
+  }
+  if (hint) { el.textContent = hint; el.classList.add('on'); } else { el.classList.remove('on'); }
+}
+
 // --------------------------- Main loop ------------------------------------
 let lastT = 0;
 function frame(now) {
@@ -2390,14 +2829,18 @@ function frame(now) {
     updateCamera(dt);
     render();
     updateHUD();
+    updateInteractHint();
   } else if (state.scene === 'dialog') {
-    // World continues to animate (particles) but player pauses
+    // World keeps ambient life; player is paused inside the dialog
     updateNPCs(dt);
     updateParticles(dt);
     render();
     tickDialog(dt);
+  } else if (state.scene === 'pause' || state.scene === 'journal') {
+    // Freeze the world but keep it visible behind the overlay
+    render();
   } else {
-    // Menu screens — draw a light animated bg on canvas
+    // Menu / charselect / about / ending — animated backdrop
     drawMenuBackdrop();
     updateMenuKeys();
   }
@@ -2452,15 +2895,19 @@ function drawMenuBackdrop() {
 // --------------------------- Global keys ----------------------------------
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
-    if (state.scene === 'playing') {
-      state.scene = 'menu'; state.menuFocus = 0;
-      $('#hud').classList.remove('on');
-      $('#quest').classList.remove('on');
-      renderMenu();
-    } else if (state.scene === 'menu') {
-      $('#menu').classList.add('hidden');
-      state.scene = 'playing';
-      $('#hud').classList.add('on');
+    if (state.scene === 'playing' || state.scene === 'dialog') { openPause(); e.preventDefault(); }
+    else if (state.scene === 'pause') { closePause(); e.preventDefault(); }
+    else if (state.scene === 'journal') { toggleJournal(); e.preventDefault(); }
+  }
+  if (e.code === 'Tab') {
+    if (state.scene === 'playing' || state.scene === 'dialog' || state.scene === 'journal') { toggleJournal(); e.preventDefault(); }
+  }
+  if (e.code === 'KeyM') {
+    if (state.scene === 'playing' || state.scene === 'pause' || state.scene === 'menu' || state.scene === 'charselect') {
+      audioSettings.muted = !audioSettings.muted;
+      applyVolume();
+      toast(audioSettings.muted ? 'Muted' : 'Sound on');
+      if (state.scene === 'pause') renderPause();
     }
   }
 });
