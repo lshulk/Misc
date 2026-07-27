@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Below the Root — Reawakened</title>
+<title>Beneath the Branches</title>
+<meta name="description" content="A tiny cozy-adventure about a peaceful people who live in a colossal tree, the sealed door in the sanctum, and what waits below the root.">
+<meta name="theme-color" content="#0b0f14">
+<meta property="og:title" content="Beneath the Branches">
+<meta property="og:description" content="A small tribute-in-a-new-sky: four dreamers, four spirit gifts, and one door no one has opened in three lifetimes.">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0f14'/%3E%3Cpath d='M16 4 L16 22 M8 22 L24 22 M10 15 Q16 8 22 15' stroke='%23c4e17f' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='27' r='2' fill='%23ffb26b'/%3E%3C/svg%3E">
 <style>
   :root {
     --bg: #0b0f14;
@@ -2433,8 +2439,8 @@ function renderMenu() {
     const cont = hasSave();
     m.innerHTML = `
       <div class="card panel">
-        <h1>Below <span class="below">the Root</span></h1>
-        <div class="sub">Reawakened · A tribute in a new sky</div>
+        <h1>Beneath <span class="below">the Branches</span></h1>
+        <div class="sub">A small green dream</div>
         ${cont ? '<button data-i="0">Continue</button>' : ''}
         <button data-i="${cont ? 1 : 0}">${cont ? 'New Dream' : 'Begin'}</button>
         <button data-i="${cont ? 2 : 1}">About</button>
